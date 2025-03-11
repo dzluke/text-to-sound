@@ -39,18 +39,35 @@ Parameters:
 ### Text encoders
 - word2vec
 - BERT
-- HuBERT
-  - uses K-means clustering labels to guide self-supervised learning in Masked Language Model (MLM) style
 - RoBERTa
 - GloVe
 - T5
+  - Flan-T5-Large: https://huggingface.co/google/flan-t5-large
+
+Contextual vs. Static Embeddings: RoBERTa provides contextual embeddings, meaning the representation of a word depends on its context within the sentence. If you require static embeddings (e.g., for individual words without context), models like Word2Vec or GloVe might be more appropriate.
+
+In transformer-based language models like BERT and RoBERTa, the [CLS] (classification) token is a special token appended to the beginning of every input sequence. During training, the model learns to aggregate the contextual information of the entire sequence into the embedding of this [CLS] token. This embedding is then utilized for various downstream tasks, such as classification or regression. Extracting the [CLS] Token Embedding: To obtain the embedding corresponding to the [CLS] token, you can access the first token's embedding from the model's output. In the context of the provided code, this can be achieved as follows: `cls_embedding = outputs.last_hidden_state[:, 0, :]`
+
+To derive a single embedding representing the entire sentence, you can apply a pooling strategy to the token embeddings. A common approach is to average the embeddings of all tokens, considering the attention mask to ignore padding tokens:
+
+For tasks like clustering or semantic search, you might prefer using pre-trained models optimized for generating sentence embeddings. The sentence-transformers library offers such models:
 
 ### Audio encoders
-- VAE
+- a custom trained VAE
 - Wav2Vec2
 - COLA
 - EnCodec
-- MuQ (SOTA) https://arxiv.org/pdf/2501.01108v2
+- MuQ https://arxiv.org/pdf/2501.01108v2
+- HuBERT
+  - uses K-means clustering labels to guide self-supervised learning in Masked Language Model (MLM) style
+
+#### MuQ
+Seems to be trained to work at sampling rate of 24kHz, but perhaps it could work at other sampling rates. 
+It outputs embeddings of size (t, 1024) where t is related to the length of the sample
+t = 55 for input length 6s
+t = 728 for input 29s
+
+The frame size is 2048 samples, so t * 2048 = length of the input in samples 
 
 ### Mapping strategies
 
@@ -139,6 +156,10 @@ Other metrics:
 - Davies–Bouldin Index: Represents the average similarity ratio of each cluster with its most similar cluster. Lower values signify better clustering.
 
 ## Notes
+
+Things to look into
+- https://en.wikipedia.org/wiki/Persistent_homology
+- https://en.wikipedia.org/wiki/Gromov%E2%80%93Hausdorff_convergence / https://en.wikipedia.org/wiki/Hausdorff_distance
 
 ### Distance metrics
 

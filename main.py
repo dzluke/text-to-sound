@@ -1,93 +1,140 @@
 import numpy as np
-from scipy.io import wavfile
 from pathlib import Path
 from sklearn.preprocessing import Normalizer, StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.neighbors import NearestNeighbors
+from models import muq, RoBERTa
+import librosa
+import soundfile as sf
+import torch
 
 SAMPLING_RATE = 44100
 
-parameters = {
-    "sound_corpus_path": "./sound_corpus",
-    "text_corpus_path" : "./text_corpus",
-    "sound_encoder": "",
-    "text_encoder": "",
-    "output_path": "./output.wav",
-}
+def load_soundfiles(path):
+    soundfiles = []
+    for file in path.iterdir():
+        if file.is_dir():
+            soundfiles = load_soundfiles(file)
+        else:
+            if file.suffix in [".wav", ".aif", ".mp3", ".m4a"]:
+                data, sr = librosa.load(file, sr=SAMPLING_RATE)
+                assert sr == SAMPLING_RATE
+                if data.ndim > 1:  # convert to mono
+                    data = data.sum(axis=1)
+                    data = data / np.abs(data).max()
+                # set to 10 seconds
+                data = librosa.util.fix_length(data, size=10 * SAMPLING_RATE)
+                soundfiles.append(data)
+    return soundfiles
 
-
-sound_corpus_path = Path(parameters["sound_corpus_path"])
-text_corpus_path = Path(parameters["text_corpus_path"])
-
-# a function that takes in a sound or word and returns an embedding
-sound_encoder = lambda x: np.random.rand(128)
-sound_decoder = lambda x: np.random.rand(44100 * 3)
-text_encoder = lambda x: np.random.rand(500)
-
-# the function that will apply dimensionality reduction
-dim = 30
-pca = PCA(n_components=dim)
-dim_reduction = pca.fit_transform
 
 # what transformations will we apply to the feature spaces?
-transform_pipeline = [Normalizer, dim_reduction]
+def create_pipeline(normalization_method, dim):
+    pca = PCA(n_components=dim)
+    return [normalization_method.fit_transform, pca.fit_transform]
 
-# how do we find the nearest neighbor in the sound space?
-nearest_neighbor = lambda x: x
 
-sound_corpus = []
-for file in sound_corpus_path.iterdir():
-    if file.suffix in [".wav", ".aif", ".mp3"]:
-        sr, data = wavfile.read(file)
-        assert sr == SAMPLING_RATE
-        sound_corpus.append(data)
+def load_text_corpus(path):
+    assert path.is_file()
+    with open(path, "r") as f:
+        return [word for line in f.readlines() for word in line.split()]
 
-text_corpus = []
-for file in text_corpus_path.iterdir():
-    with open(file, "r") as f:
-        for line in f.readlines():
-            for word in line.split():
-                text_corpus.append(word)
 
-sound_embeddings = []
-for sound in sound_corpus:
-    embedding = sound_encoder(sound)
-    sound_embeddings.append(embedding)
+def embed_sounds(sounds, encoder):
+    embeddings = []
+    for sound in sounds:
+        embedding = encoder(sound, SAMPLING_RATE).squeeze()
+        # For MuQ: average across time
+        embedding = torch.mean(embedding, dim=0).flatten()
+        embeddings.append(embedding)
+    return torch.stack(embeddings)
 
-text_embeddings = []
-for text in text_corpus:
-    embedding = text_encoder(text)
-    text_embeddings.append(embedding)
 
-# transform the embedding spaces
-for transform in transform_pipeline:
-    sound_embeddings = transform(sound_embeddings)
-    text_embeddings = transform(text_embeddings)
+def embed_text(text, encoder):
+    return encoder(text)
 
-# the mapping between spaces is defined by the matrix W
-W = np.eye(dim)
 
-# for each word input, find the resulting sound
-mapped_text_embeddings = []
-for word_embedding in text_embeddings:
-    sound_embedding = W @ word_embedding
-    mapped_text_embeddings.append(sound_embedding)
+def find_nearest_neighbors(sound_embeddings, points, distance_metric):
+    """
 
-# for each mapped text embedding, find the nearest sound
-output_sound_embeddings = []
-for text_embedding in mapped_text_embeddings:
-    s = nearest_neighbor(text_embedding)
-    output_sound_embeddings.append(s)
+    :param sound_embeddings: The space S of all sound embeddings
+    :param points: The text embeddings that have been mapped to S
+    :param distance_metric: 'euclidean' or 'cosine'
+    :return: neighbor_indices: list of indices that correspond to points in S
+    """
+    neigh = NearestNeighbors(n_neighbors=1, algorithm='auto', metric=distance_metric).fit(sound_embeddings)
+    neighbor_indices = neigh.kneighbors(points, return_distance=False).flatten()
+    return neighbor_indices
 
-# convert sound embeddings to sounds
-output_sounds = []
-output_sound_length = 0
-for sound_embedding in output_sound_embeddings:
-    sound = sound_decoder(sound_embedding)
-    output_sounds.append(sound)
-    output_sound_length += sound.shape[0] # assuming these are mono sounds
 
-# concatenate sounds
-output = np.concatenate(output_sounds)
+def save_output(sound_list, output_path):
+    # concatenate audio files
+    output = np.concatenate(np.array(sound_list))
 
-# write to file
-wavfile.write(parameters["output_path"], SAMPLING_RATE, output)
+    output_path.mkdir(parents=True, exist_ok=True)
+    counter = 0
+    while (output_path / f"output{counter}.wav").exists():
+        counter += 1
+
+    filename = output_path / f"output{counter}.wav"
+    sf.write(filename, output, SAMPLING_RATE)
+
+
+def main():
+    parameters = {
+        "sound_corpus_path": "./corpora/sound/anonymous_corpus",
+        "text_corpus_path": "./corpora/text/test.txt",
+        "sound_encoder": "MuQ",
+        "text_encoder": "RoBERTa",
+        "output_path": "./output",
+        "sound_length": 10,
+        "distance": "euclidean",
+    }
+
+    normalization = StandardScaler()
+    dim = 2  # the number of dimensions to reduce to
+
+    sound_corpus_path = Path(parameters["sound_corpus_path"])
+    text_corpus_path = Path(parameters["text_corpus_path"])
+
+    if parameters["sound_encoder"] == "MuQ":
+        sound_encoder = muq
+    if parameters["text_encoder"] == "RoBERTa":
+        text_encoder = RoBERTa
+
+    print("Loading sound and text data...")
+    sound_corpus = load_soundfiles(sound_corpus_path)
+    text_corpus = load_text_corpus(text_corpus_path)
+
+    print("Embedding sounds...")
+    sound_embeddings = embed_sounds(sound_corpus, sound_encoder)
+
+    print("Embedding text...")
+
+    text_embeddings = embed_text(" ".join(text_corpus), text_encoder)
+
+    print("Transforming embeddings...")
+    # what transformations will we apply to the feature space?
+    transform_pipeline = create_pipeline(normalization, dim)
+    for transform in transform_pipeline:
+        sound_embeddings = transform(sound_embeddings)
+        text_embeddings = transform(text_embeddings)
+
+    print("Mapping text to sound...")
+    W = np.eye(dim)
+    mapped_text_embeddings = [W @ emb for emb in text_embeddings]
+
+    print("Finding nearest neighbors...")
+    neighbor_indices = find_nearest_neighbors(sound_embeddings, mapped_text_embeddings, parameters["distance"])
+
+    print("Fetching sounds...")
+    output_sounds = [sound_corpus[i] for i in neighbor_indices]
+
+    print("Saving output...")
+    save_output(output_sounds, Path(parameters["output_path"]))
+
+    print("Done.")
+
+if __name__ == "__main__":
+    main()
+
