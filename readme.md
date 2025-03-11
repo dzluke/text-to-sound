@@ -21,6 +21,12 @@ or determined by the user. Each word leads to one sound.
 
 The mapping is unsupervised, but pre-trained supervised methods can be used in the system.
 
+## Next steps
+- [ ] Sound corpus input: slice into chunks/grains and add option to remove silence
+- [ ] Evaluation: how can we evaluate the system?
+- [ ] Implement other mapping methods
+- [ ] Implement other audio and text encoders
+
 ## Methodology
 
 Input sound corpus is embedded in a sound feature space $S$ as a result of a pre-trained audio encoder.

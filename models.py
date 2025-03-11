@@ -49,4 +49,7 @@ def RoBERTa(text):
     print("RoBERTa: number of tokens: ", len(tokens))
 
     last_hidden_states = outputs.last_hidden_state
-    return last_hidden_states.detach().squeeze()
+    # remove outputs from the start of sequence and end of sequence tokens
+    last_hidden_states = last_hidden_states.squeeze()
+    last_hidden_states = last_hidden_states[1:last_hidden_states.shape[0]-1]
+    return last_hidden_states.detach()
