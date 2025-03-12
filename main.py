@@ -1,8 +1,9 @@
 import numpy as np
 from pathlib import Path
-from sklearn.preprocessing import Normalizer, StandardScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.neighbors import NearestNeighbors
+from sklearn.cluster import KMeans
 from models import muq, RoBERTa
 import librosa
 import soundfile as sf
@@ -22,8 +23,6 @@ def load_soundfiles(path):
                 if data.ndim > 1:  # convert to mono
                     data = data.sum(axis=1)
                     data = data / np.abs(data).max()
-                # set to 10 seconds
-                data = librosa.util.fix_length(data, size=10 * SAMPLING_RATE)
                 soundfiles.append(data)
     return soundfiles
 
@@ -119,12 +118,55 @@ def equal_slices(sound, grain_size):
     return librosa.util.frame(sound, frame_length=grain_size, hop_length=grain_size, axis=0)
 
 
+#####################
+# MAPPING FUNCTIONS #
+#####################
+
+
+def identity(sound_embeddings, text_embeddings, distance_metric):
+    W = np.eye(sound_embeddings.shape[1])
+    mapped_text_embeddings = [W @ emb for emb in text_embeddings]
+    print("Finding nearest neighbors...")
+    neighbor_indices = find_nearest_neighbors(sound_embeddings, mapped_text_embeddings, distance_metric)
+    return mapped_text_embeddings
+
+
+def cluster_map(sound_embeddings, text_embeddings, distance_metric):
+    print("Applying clustering...")
+    k = 2
+    sound_kmeans = KMeans(n_clusters=k, n_init=10).fit(sound_embeddings)
+    text_kmeans = KMeans(n_clusters=k, n_init=10).fit(text_embeddings)
+
+    sound_cluster_centers = sound_kmeans.cluster_centers_
+    text_cluster_centers = text_kmeans.cluster_centers_
+
+    sound_cluster_assignments = sound_kmeans.labels_
+    for i in range(len(sound_cluster_assignments)):
+        cluster = sound_cluster_assignments[i]
+
+        # find the nearest sound cluster for each text cluster
+        cluster_neighbors = find_nearest_neighbors(sound_cluster_centers, text_cluster_centers, distance_metric)
+        # for each text embedding, figure out which cluster it is in
+        cluster_assignments = text_kmeans.labels_  # this tells us the index of the cluster it belongs in
+        # for each text embedding, find the nearest sound cluster for it's text cluster
+        selected_sound_indices = []
+        for i in range(text_embeddings.shape[0]):
+            cluster_idx = cluster_assignments[i]
+            cluster_neighbor = cluster_neighbors[cluster_idx]  # find the sound cluster closest to this text cluster
+            # choose a sound from that cluster
+            points_in_cluster = np.where(sound_kmeans.labels_ == cluster_neighbor)[0]
+            chosen_point_idx = np.random.choice(points_in_cluster)
+            selected_sound_indices.append(chosen_point_idx)
+    return selected_sound_indices
+
+
 def main():
     parameters = {
         "sound_corpus_path": "./corpora/sound/toy",
         "text_corpus_path": "./corpora/text/repeat.txt",
         "sound_encoder": "MuQ",
         "text_encoder": "RoBERTa",
+        "mapping": "cluster",
         "output_path": "./output",
         "grain_size": 1000,  # in ms
         "distance": "euclidean",
@@ -132,11 +174,14 @@ def main():
     }
 
     normalization = StandardScaler()
-    dim = 10  # the number of dimensions to reduce to
+    dim = 2  # the number of dimensions to reduce to
 
     # a function that determines how to separate sounds
-    grain_size = int(parameters['grain_size'] / 1000.0 * SAMPLING_RATE)  # convert to samples
-    slice_fn = lambda y: equal_slices(y, grain_size)
+    if parameters['grain_size'] is not None:
+        grain_size = int(parameters['grain_size'] / 1000.0 * SAMPLING_RATE)  # convert to samples
+        slice_fn = lambda y: equal_slices(y, grain_size)
+    else:
+        slice_fn = lambda y: y
 
     sound_corpus_path = Path(parameters["sound_corpus_path"])
     text_corpus_path = Path(parameters["text_corpus_path"])
@@ -145,6 +190,8 @@ def main():
         sound_encoder = muq
     if parameters["text_encoder"] == "RoBERTa":
         text_encoder = RoBERTa
+
+    mapping = parameters["mapping"]
 
     print("Loading sound and text data...")
     sound_corpus = load_soundfiles(sound_corpus_path)
@@ -166,12 +213,16 @@ def main():
         sound_embeddings = transform(sound_embeddings)
         text_embeddings = transform(text_embeddings)
 
-    print("Mapping text to sound...")
-    W = np.eye(dim)
-    mapped_text_embeddings = [W @ emb for emb in text_embeddings]
+    print(f"Mapping text to sound with method {mapping}...")
+    # mapping options: identity, cluster_map
+    if mapping == "identity":
+        mapping_fn = identity
+    elif mapping == "cluster":
+        mapping_fn = cluster_map
+    else:
+        raise Exception("Invalid mapping provided")
 
-    print("Finding nearest neighbors...")
-    neighbor_indices = find_nearest_neighbors(sound_embeddings, mapped_text_embeddings, parameters["distance"])
+    neighbor_indices = mapping_fn(sound_embeddings, text_embeddings, parameters['distance'])
 
     print("Fetching sounds...")
     output_sounds = [sound_corpus[i] for i in neighbor_indices]

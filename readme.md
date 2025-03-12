@@ -22,7 +22,7 @@ or determined by the user. Each word leads to one sound.
 The mapping is unsupervised, but pre-trained supervised methods can be used in the system.
 
 ## Next steps
-- [ ] Sound corpus input: slice into chunks/grains and add option to remove silence
+- [x] Sound corpus input: slice into chunks/grains and add option to remove silence
 - [ ] Evaluation: how can we evaluate the system?
 - [ ] Implement other mapping methods
 - [ ] Implement other audio and text encoders
@@ -98,6 +98,8 @@ Another idea is to use clustering:
 Then calculate the distance between each text cluster and the origin. For the associated sound cluster, force it to also
 be the same distance from the origin. Now you have a mapping.
 
+Guide for selecting number of clusters: https://scikit-learn.org/stable/auto_examples/cluster/plot_kmeans_silhouette_analysis.html#sphx-glr-auto-examples-cluster-plot-kmeans-silhouette-analysis-py
+
 Another possibility is to calculate the distance from each cluster and force that to be the same between the two spaces. 
 For an input $t$, we calculate the distance to each text cluster, then we find the point in $S$ with the same distances 
 to each cluster in $S$.
@@ -157,6 +159,7 @@ If we use a sound corpus that has inherent clusters (like TinySOL we would expec
 then we could check to see if the words in a given cluster map to different samples of the same instrument.
 
 Other metrics:
+- Hausdorff distance: measure how well a learned mapping between sound embeddings and text embeddings aligns the two spaces. Since Hausdorff distance measures the worst-case closest distance between two sets, it’s ideal for assessing whether every point in one space has a close and meaningful counterpart in the other.
 - Calinski–Harabasz Index (Variance Ratio Criterion): Evaluates cluster validity by considering the ratio of between-cluster dispersion to within-cluster dispersion. Higher values indicate better-defined clusters
 - Silhouette Score: Measures how similar an object is to its own cluster compared to other clusters. Scores range from -1 to 1, with higher values indicating better clustering
 - Davies–Bouldin Index: Represents the average similarity ratio of each cluster with its most similar cluster. Lower values signify better clustering.
