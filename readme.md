@@ -24,8 +24,10 @@ The mapping is unsupervised, but pre-trained supervised methods can be used in t
 ## Next steps
 - [x] Sound corpus input: slice into chunks/grains and add option to remove silence
 - [ ] Evaluation: how can we evaluate the system?
+- [ ] Try with different granularities of sounds (full sounds, onsets, grains)
 - [ ] Implement other mapping methods
 - [ ] Implement other audio and text encoders
+  - I think I should use word2vec or any static encoder that is not context dependent so that the same word maps to the same place. Start simple. 
 
 ## Methodology
 
@@ -130,7 +132,7 @@ Given two transformational matrices $W_S$ which maps from $S$ to $T$ and $W_T$ w
 Now perform an iterative process:
 1. For each $s \in S$, find $t^*$, the nearest $W_T t$ to $s$, which is the best text encoding for $s$
 2. For each $t \in T$, find $s^*$, the nearest $W_S s$ to $t$, which is the best sound encoding for $t$
-3. Optimize $W_S$ and $W_T$ by minimizing: distance $W_S s$ and $t^*$ + distance $W_T t$ and $s^*$ + cycle constraints (ex: minimize distance between $s$ and $W_S W_T s$)
+3. Optimize $W_S$ and $W_T$ by minimizing: distance $W_S s$ and $t*$ + distance $W_T t$ and $s*$ + cycle constraints (ex: minimize distance between $s$ and $W_S W_T s$)
 
 We could also use CLAP in a (semi-)supervised way, where you replace $t*$ with $CLAP(t)$ or you find $t*$ by finding the nearest neighbor in the CLAP encoding ($t*=$ nearest $CLAP(t)$ to $s$). 
 But then we would really just be using CLAP to align our spaces, so what's the reason we don't just use CLAP for the entire thing?
@@ -149,6 +151,11 @@ Possible initialization methods:
 
 ## Evaluation
 
+### Cluster evaluation
+
+Cluster evaluation can tell us whether our embedding is good or not, as well as the parameters we chose for dimensionality reduction, 
+number of clusters, etc.
+
 We can use measures that evaluate the clustering of a space, such as Akaike information criterion (AIC) or Bayesian 
 information criterion (BIC). Compute the intra-cluster distance (for each point in the cluster, the distance between
 the point and that cluster's centroid) and normalize by the inter-cluster distance ...? I'm not sure. You want this to equal 1: $|aic1 - aic2| - |AIC1 - AIC2|$
@@ -163,6 +170,15 @@ Other metrics:
 - Calinski–Harabasz Index (Variance Ratio Criterion): Evaluates cluster validity by considering the ratio of between-cluster dispersion to within-cluster dispersion. Higher values indicate better-defined clusters
 - Silhouette Score: Measures how similar an object is to its own cluster compared to other clusters. Scores range from -1 to 1, with higher values indicating better clustering
 - Davies–Bouldin Index: Represents the average similarity ratio of each cluster with its most similar cluster. Lower values signify better clustering.
+
+### Mapping evaluation
+
+For each $t_i,t_j$ that are in the same cluster, calculate the difference between the distance between them and the distance 
+between their sounds: $|d(t_i, t_j) - d(s^*_i, s^*_j)|$. The smaller the value the better.
+
+Variation: If we want to compare it for every pair of text inputs, we need to consider the fact that the distance between
+text clusters should not affect the measurement -- well actually I'm not sure about that. Without alignment, it wouldn't matter that the 
+
 
 ## Notes
 
