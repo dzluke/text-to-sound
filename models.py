@@ -1,9 +1,10 @@
 import torch
 import numpy as np
-from scipy.io import wavfile
 from scipy.signal import resample_poly
 from muq import MuQ
 from transformers import AutoTokenizer, RobertaModel
+import gensim.downloader as api
+import fasttext
 
 
 def muq(wav, sr):
@@ -53,3 +54,31 @@ def RoBERTa(text):
     last_hidden_states = last_hidden_states.squeeze()
     last_hidden_states = last_hidden_states[1:last_hidden_states.shape[0]-1]
     return last_hidden_states.detach()
+
+
+def fastText(text):
+    model = fasttext.load_model('fastText/cc.en.300.bin')
+    embeddings = []
+    for word in text.split():
+        emb = model.get_word_vector(word)
+        embeddings.append(emb)
+    embeddings = np.stack(embeddings)
+    embeddings = torch.from_numpy(embeddings)
+    return embeddings
+
+
+def word2vec(text):
+    # Download and load the pre-trained Word2Vec model
+    w2v_model = api.load('word2vec-google-news-300')
+    vecs = []
+    for word in text.split():
+        # Retrieve the word vector
+        try:
+            word_vector = w2v_model[word]
+            vecs.append(word_vector)
+        except KeyError:
+            print("Word '{}' not found in vocabulary".format(word))
+            continue
+    vecs = np.stack(vecs)
+    print("word2vec shape: ", vecs.shape)
+    return torch.from_numpy(vecs)

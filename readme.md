@@ -282,3 +282,13 @@ These can be used for evaluation
 - MagnaTagATune: https://mirg.city.ac.uk/codeapps/the-magnatagatune-dataset
 - MTG-Jamendo: https://mtg.github.io/mtg-jamendo-dataset/
 - SoundDescs: https://github.com/akoepke/audio-retrieval-benchmark?tab=readme-ov-file
+
+# Install instructions
+## Windows
+```
+pip install fasttext-wheel
+mkdir fastText
+cd fastText
+wget https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.en.300.bin.gz
+gunzip cc.en.300.bin.gz
+```

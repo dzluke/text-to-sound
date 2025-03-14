@@ -3,6 +3,7 @@ from pathlib import Path
 import librosa
 import soundfile as sf
 import torch
+from itertools import combinations
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -10,50 +11,14 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 
-from models import muq, RoBERTa
-from eval import GridSearchEvaluator
+from scipy.spatial import distance
+
+from models import muq, RoBERTa, word2vec, fastText
+from util import *
 
 
 SAMPLING_RATE = 44100
-
-def load_soundfiles(path):
-    soundfiles = []
-    for file in path.iterdir():
-        if file.is_dir():
-            soundfiles = load_soundfiles(file)
-        else:
-            if file.suffix in [".wav", ".aif", ".mp3", ".m4a"]:
-                data, sr = librosa.load(file, sr=SAMPLING_RATE)
-                assert sr == SAMPLING_RATE
-                if data.ndim > 1:  # convert to mono
-                    data = data.sum(axis=1)
-                    data = data / np.abs(data).max()
-                soundfiles.append(data)
-    return soundfiles
-
-
-def remove_silence(sounds, top_db=60):
-    """
-    Removes leading and trailing silence from a list of sound arrays.
-
-    Args:
-        sounds (list of np.ndarray): List of audio signals as numpy arrays.
-        top_db (int): Threshold (in decibels) below reference to consider as silence.
-
-    Returns:
-        list of np.ndarray: List of trimmed audio signals.
-    """
-    trimmed_sounds = []
-    for sound in sounds:
-        # Check if the whole sound is below the top_db threshold
-        if librosa.get_duration(y=sound) == 0 or np.max(np.abs(sound)) < librosa.db_to_amplitude(-top_db):
-            continue
-
-        # Trim silence from the beginning and end
-        trimmed_sound, _ = librosa.effects.trim(sound, top_db=top_db)
-        trimmed_sounds.append(trimmed_sound)
-    return trimmed_sounds
-
+OUTPUT_PATH = Path("./output")
 
 def preprocess_sounds(sounds, slice_fn, trim_silence=True):
     if trim_silence:
@@ -98,7 +63,7 @@ def find_nearest_neighbors(S, points, distance_metric):
     :param S: The space S of all sound embeddings
     :param points: A list of points that you want to find the nearest neighbors in S
     :param distance_metric: 'euclidean' or 'cosine'
-    :return: (the nearest point, the idx of the nearest point)
+    :return: list of (the nearest point, the idx of the nearest point)
     """
     neigh = NearestNeighbors(n_neighbors=1, algorithm='auto', metric=distance_metric).fit(S)
     neighbor_indices = neigh.kneighbors(points, return_distance=False).flatten()
@@ -117,10 +82,35 @@ def save_output(sound_list, output_path):
     filename = output_path / f"output{counter}.wav"
     sf.write(filename, output, SAMPLING_RATE)
 
+#################
+# SLICE METHODS #
+#################
+
+def entire_sample(sound):
+    return sound
+
+
 def equal_slices(sound, grain_size):
     if sound.size < grain_size:
         return [sound]
     return librosa.util.frame(sound, frame_length=grain_size, hop_length=grain_size, axis=0)
+
+
+def get_onsets(y):
+    # Detect onsets
+    onset_samples = librosa.onset.onset_detect(y=y, sr=SAMPLING_RATE, units='samples')
+
+    # Split audio at onsets
+    segments = []
+    for i in range(len(onset_samples) - 1):
+        segment = y[onset_samples[i]:onset_samples[i + 1]]
+        segments.append(segment)
+
+    # Add final segment (after last onset to end)
+    if onset_samples[-1] < len(y):
+        segments.append(y[onset_samples[-1]:])
+
+    return segments
 
 
 def evaluate_clustering(X, labels):
@@ -137,6 +127,27 @@ def evaluate_clustering(X, labels):
     return eval
 
 
+def evaluate_mapping(t_embs, s_embs, distance_metric):
+    """
+    t_embs[i] is the sound mapped from t_embs[i]
+    :param t_embs:
+    :param s_embs:
+    :return: a distance
+    """
+    distance = 0
+    num_t_embs = t_embs.shape[0]
+    pairs = list(combinations(range(num_t_embs), 2))  # list of all possible pairs of indices
+    for i, j in pairs:
+        t1, t2 = t_embs[i], t_embs[j]
+        s1, s2 = s_embs[i], s_embs[j]
+        dt = distance_metric(t1, t2)
+        ds = distance_metric(s1, s2)
+        diff = abs(dt - ds)
+        distance += diff
+    distance /= len(pairs)  # normalize by the number of pairs
+    return distance
+
+
 #####################
 # MAPPING FUNCTIONS #
 #####################
@@ -145,7 +156,8 @@ def evaluate_clustering(X, labels):
 def identity(sound_embeddings, text_embeddings, distance_metric):
     W = np.eye(sound_embeddings.shape[1])
     mapped_text_embeddings = [W @ emb for emb in text_embeddings]
-    return mapped_text_embeddings
+    _, nn_idx = find_nearest_neighbors(sound_embeddings, mapped_text_embeddings, distance_metric)
+    return nn_idx
 
 
 def cluster_map(sound_embeddings, text_embeddings, distance_metric):
@@ -164,11 +176,11 @@ def cluster_map(sound_embeddings, text_embeddings, distance_metric):
     sound_eval = evaluate_clustering(sound_embeddings, sound_cluster_labels)
     text_eval = evaluate_clustering(text_embeddings, text_cluster_labels)
 
-    for k, v in sound_eval.items():
-        print(f"Sound {k}: {v}")
+    for key, val in sound_eval.items():
+        print(f"Sound {key}: {val}")
     print("\n")
-    for k, v in text_eval.items():
-        print(f"Text {k}: {v}")
+    for key, val in text_eval.items():
+        print(f"Text {key}: {val}")
 
     # for each text cluster, find the nearest sound cluster
     nearest_cluster = {}  # maps a text cluster idx to the idx of the nearest sound cluster
@@ -197,32 +209,44 @@ def cluster_map(sound_embeddings, text_embeddings, distance_metric):
 
 
 def run(params):
+    sound_corpus_path = Path(params.sound_path)
+    text_corpus_path = Path(params.text_path)
 
-    normalization = StandardScaler()
-    dim = 2  # the number of dimensions to reduce to
-
-    # a function that determines how to separate sounds
-    if params['grain_size'] is not None:
-        grain_size = int(params['grain_size'] / 1000.0 * SAMPLING_RATE)  # convert to samples
-        slice_fn = lambda y: equal_slices(y, grain_size)
-    else:
-        slice_fn = lambda y: y
-
-    sound_corpus_path = Path(params["sound_corpus_path"])
-    text_corpus_path = Path(params["text_corpus_path"])
-
-    if params["sound_encoder"] == "MuQ":
+    if params.sound_encoder == "MuQ":
         sound_encoder = muq
-    if params["text_encoder"] == "RoBERTa":
-        text_encoder = RoBERTa
 
-    mapping = params["mapping"]
+    if params.text_encoder == "RoBERTa":
+        text_encoder = RoBERTa
+    elif params.text_encoder == "word2vec":
+        text_encoder = word2vec
+    elif params.text_encoder == "fastText":
+        text_encoder = fastText
 
     print("Loading sound and text data...")
     sound_corpus = load_soundfiles(sound_corpus_path)
-    sound_corpus = preprocess_sounds(sound_corpus, slice_fn, params["trim_silence"])
-
     text_corpus = load_text_corpus(text_corpus_path)
+
+    # check to see if this will be a valid run
+    if params.dim > len(sound_corpus) or params.dim > len(text_corpus):
+        print(f"!!!: Input PCA dimension {params.dim} cannot be larger than length of sound corpus ({len(sound_corpus)}) or text corpus ({len(text_corpus)})")
+        print("Ending this run.")
+        return
+
+    # slice_fn: a function that determines how to separate sounds
+    try:
+        grain_size = int(params.sound_preprocessing / 1000.0 * SAMPLING_RATE)
+        slice_fn = lambda y: equal_slices(y, grain_size)
+    except TypeError:
+        if params.sound_preprocessing == "onsets":
+            slice_fn = lambda y: get_onsets(y)
+        elif params.sound_preprocessing == "full":
+            slice_fn = lambda y: y
+        else:
+            raise ValueError(f"Unknown preprocessing {params.sound_preprocessing}")
+    sound_corpus = preprocess_sounds(sound_corpus, slice_fn, params.trim_silence)
+
+    if params.sound_encoder == "MuQ":
+        sound_corpus = [s for s in sound_corpus if s.size > 1024]  # MuQ requires sounds longer than 1024 samples
 
     print("Embedding sounds...")
     sound_embeddings = embed_sounds(sound_corpus, sound_encoder)
@@ -230,13 +254,26 @@ def run(params):
     print("Embedding text...")
     text_embeddings = embed_text(" ".join(text_corpus), text_encoder)
 
+    # check again to see if this will be a valid run
+    if params.dim > len(sound_embeddings) or params.dim > len(text_embeddings):
+        print(
+            f"!!!: Input PCA dimension {params.dim} cannot be larger than length of sound embeds ({len(sound_embeddings)}) or text embeds ({len(text_embeddings)})")
+        print("Ending this run.")
+        return
+
     print("Transforming embeddings...")
     # what transformations will we apply to the feature space?
-    transform_pipeline = create_pipeline(normalization, dim)
+    if params.normalization == "standard":
+        norm_method = StandardScaler()
+    else:
+        raise KeyError("Unknown normalization method")
+
+    transform_pipeline = create_pipeline(norm_method, params.dim)
     for transform in transform_pipeline:
         sound_embeddings = transform(sound_embeddings)
         text_embeddings = transform(text_embeddings)
 
+    mapping = params.mapping
     print(f"Mapping text to sound with method {mapping}...")
     # mapping options: identity, cluster_map
     if mapping == "identity":
@@ -246,29 +283,40 @@ def run(params):
     else:
         raise Exception("Invalid mapping provided")
 
-    neighbor_indices = mapping_fn(sound_embeddings, text_embeddings, params['distance'])
+    neighbor_indices = mapping_fn(sound_embeddings, text_embeddings, params.distance_metric)
+
+    print("Evaluating mapping...")
+    if params.distance_metric == "euclidean":
+        distance_fn = lambda x, y: np.linalg.norm(x - y)
+    elif params.distance_metric == "cosine":
+        distance_fn = lambda x, y: distance.cosine(x, y)
+
+    score = evaluate_mapping(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
+    print(f"Score: {score}")
 
     print("Fetching sounds...")
     output_sounds = [sound_corpus[i] for i in neighbor_indices]
 
     print("Saving output...")
-    save_output(output_sounds, Path(params["output_path"]))
+    save_output(output_sounds, OUTPUT_PATH)
 
     print("Done.")
 
 if __name__ == "__main__":
 
-    parameters = {
-        "sound_corpus_path": "./corpora/sound/toy",
-        "text_corpus_path": "./corpora/text/test.txt",
-        "sound_encoder": "MuQ",
-        "text_encoder": "RoBERTa",
-        "mapping": "cluster",
-        "output_path": "./output",
-        "grain_size": 3000,  # in ms
-        "distance": "euclidean",
-        "trim_silence": True,
-    }
+    e = Evaluator(
+        sound_path="./corpora/sound/toy",
+        text_path="./corpora/text/test.txt",
+        sound_encoders=["MuQ"],
+        text_encoders=["fastText"],
+        mappings=["identity"],
+        sound_preprocessings=[1000],
+        normalizations=["standard"],
+        dims=[2, 10, 30],
+        distance_metrics=["euclidean", "cosine"],
+        mapping_evaluations=["pairwise"]
+    )
 
-    run(parameters)
-
+    parameter_list = e.create_params()
+    for parameters in parameter_list:
+        run(parameters)
