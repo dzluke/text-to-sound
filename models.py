@@ -8,45 +8,71 @@ import fasttext
 from librosa import resample
 
 
-def muq(wav, sr):
+def muq(wavs, sr):
+    """
+    Process multiple audio samples with MuQ model.
+    
+    Args:
+        wavs: List of audio samples
+        sr: Sampling rate of input audio samples
+        
+    Returns:
+        torch.Tensor: Stacked embeddings for all valid samples
+    """
     device = 'cuda'
-
-    # Convert stereo to mono by averaging channels
-    if len(wav.shape) == 2:  # Check if stereo (2D array)
-        wav = wav.mean(axis=1)  # Average the two channels
-
-    # Convert to float32 if needed and normalize to [-1, 1] range
-    # if wav.dtype != np.float32:
-    #     wav = wav.astype(np.float32) / np.iinfo(wav.dtype).max
-
-    # Resample if the sample rate is not 24000 Hz
+    embeddings = []
     target_sr = 24000
-    if sr != target_sr:
-        wav = resample(wav, orig_sr=sr, target_sr=target_sr)  # Resample to 24000 Hz
-        sr = target_sr  # Update sample rate variable
+    
+    # Load MuQ model once for the whole batch
+    model = MuQ.from_pretrained("OpenMuQ/MuQ-large-msd-iter")
+    model = model.to(device).eval()
+    
+    for i, wav in enumerate(wavs):
+        # Convert stereo to mono by averaging channels
+        if len(wav.shape) == 2:
+            wav = wav.mean(axis=1)
+            
+        # Resample if needed
+        if sr != target_sr:
+            wav = resample(wav, orig_sr=sr, target_sr=target_sr)
+            
+        # Skip if too short
+        if wav.size < 1024:
+            print(f"Signal {i} too short for MuQ, skipping...")
+            continue
+            
+        # Convert to torch tensor and move to device
+        wav_tensor = torch.tensor(wav).unsqueeze(0).to(device)
+        
+        # Run model inference
+        try:
+            with torch.no_grad():
+                output = model(wav_tensor, output_hidden_states=True)
+                
+            # Remove batch dimension
+            embedding = output.last_hidden_state.squeeze()
+            
+            # Handle different shapes
+            if embedding.dim() > 1:
+                # Average across time
+                embedding = torch.mean(embedding, dim=0).flatten()
+                
+            # Move to CPU and append to results
+            embeddings.append(embedding.cpu())
 
-    if wav.size < 1024:  # Muq doesn't work with shorter signals
-        print("Signal too short for MuQ, skipping...")
-        return None
+            print(f"MuQ: Generated embedding with with shape {embedding.shape}")
+            
+        except Exception as e:
+            print(f"Error processing sample {i}: {e}")
+            continue
+    
+    if not embeddings:
+        raise ValueError("No valid embeddings were generated")
+        
+    # Stack all embeddings into a single tensor
+    embeddings = torch.stack(embeddings)
 
-    # Convert to torch tensor and move to device
-    wav = torch.tensor(wav).unsqueeze(0).to(device)
-
-    # Load MuQ model
-    muq = MuQ.from_pretrained("OpenMuQ/MuQ-large-msd-iter")
-    muq = muq.to(device).eval()
-
-    # Run model inference
-    with torch.no_grad():
-        output = muq(wav, output_hidden_states=True)
-
-    print('MuQ: feature shape: ', output.last_hidden_state.shape)
-
-    embedding = output.last_hidden_state.squeeze() # Remove batch dimension
-    # For MuQ: average across time
-    embedding = torch.mean(embedding, dim=0).flatten()
-
-    return embedding.cpu()
+    return embeddings
 
 
 def RoBERTa(text):

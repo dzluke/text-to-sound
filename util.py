@@ -1,8 +1,16 @@
 import librosa
 import numpy as np
 from itertools import product
-from main import SAMPLING_RATE
 from pathlib import Path
+
+SAMPLING_RATE = None
+
+def set_sampling_rate(sr):
+    """
+    Set the global sampling rate for the system. This is to avoid circular imports with main..py
+    """
+    global SAMPLING_RATE
+    SAMPLING_RATE = sr
 
 class Parameter:
     """
@@ -64,7 +72,7 @@ class Parameter:
         )
         return filename.replace(" ", "_")
 
-class Evaluator:
+class ParameterGenerator:
     """
     A set of all possible parameters to test for the system. It outputs a list of Parameter objects that exhaustively cover
     all possible input parameters.

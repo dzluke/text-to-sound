@@ -15,12 +15,14 @@ from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bo
 from scipy.spatial import distance
 
 from models import muq, RoBERTa, word2vec, fastText
-from util import *
+from util import Parameter, ParameterGenerator, load_soundfiles, remove_silence, set_sampling_rate
 
 
 SAMPLING_RATE = 44100
 OUTPUT_PATH = Path("./output")
 CACHE_PATH = Path("./cache")
+
+set_sampling_rate(SAMPLING_RATE)
 
 
 def preprocess_sounds(sounds, slice_fn, trim_silence=True):
@@ -66,21 +68,18 @@ def embed_sounds(sounds, encoder, cache_file=None):
     if cache_file is not None and cache_file.exists():
         print(f"Loading sound embeddings from cache: {cache_file}")
         with open(cache_file, "rb") as f:
-            return pickle.load(f)
+            embeddings = pickle.load(f)
+            return embeddings
     
-    embeddings = []
-    for sound in sounds:
-        embedding = encoder(sound, SAMPLING_RATE)
-        if embedding is None:
-            continue
-        embeddings.append(embedding)
-
+    # Batch process sounds
+    embeddings = encoder(sounds, SAMPLING_RATE)
+    
     if cache_file is not None:
         # Save embeddings to cache
         with open(cache_file, "wb") as f:
             pickle.dump(embeddings, f)
     
-    return torch.stack(embeddings)
+    return embeddings
 
 
 def embed_text(text, encoder, cache_file=None):
@@ -169,9 +168,9 @@ def evaluate_clustering(X, labels):
     return eval
 
 
-def evaluate_mapping(t_embs, s_embs, distance_metric):
+def pairwise_score(t_embs, s_embs, distance_metric):
     """
-    t_embs[i] is the sound mapped from t_embs[i]
+    s_embs[i] is the sound mapped from t_embs[i]
     :param t_embs:
     :param s_embs:
     :return: a distance
@@ -214,16 +213,6 @@ def cluster_map(sound_embeddings, text_embeddings, distance_metric):
     sound_cluster_labels = sound_kmeans.labels_
     text_cluster_labels = text_kmeans.labels_
 
-    # evaluate clustering
-    sound_eval = evaluate_clustering(sound_embeddings, sound_cluster_labels)
-    text_eval = evaluate_clustering(text_embeddings, text_cluster_labels)
-
-    for key, val in sound_eval.items():
-        print(f"Sound {key}: {val}")
-    print("\n")
-    for key, val in text_eval.items():
-        print(f"Text {key}: {val}")
-
     # for each text cluster, find the nearest sound cluster
     nearest_cluster = {}  # maps a text cluster idx to the idx of the nearest sound cluster
     for i in range(k):
@@ -247,10 +236,10 @@ def cluster_map(sound_embeddings, text_embeddings, distance_metric):
 
     # convert each sound embedding to the index it corresponds to in sound_corpus
     nearest_sound_idx = [np.where((sound_embeddings == sound))[0][0] for sound in nearest_sounds]
-    return nearest_sound_idx
+    return nearest_sound_idx, (sound_cluster_labels, text_cluster_labels)  # return the cluster labels for evaluation purposes
 
 
-def run(params, cache=True):
+def run(params, evaluator=None, cache=True):
     sound_corpus_path = Path(params.sound_path)
     text_corpus_path = Path(params.text_path)
 
@@ -284,11 +273,12 @@ def run(params, cache=True):
             slice_fn = lambda y: get_onsets(y)
             slice_fn_name = "onsets"
         elif params.sound_preprocessing == "full":
-            slice_fn = lambda y: y
+            # slice_fn = lambda y: y
             slice_fn_name = "full"
         else:
             raise ValueError(f"Unknown preprocessing {params.sound_preprocessing}")
-    sound_corpus = preprocess_sounds(sound_corpus, slice_fn, params.trim_silence)
+    if params.sound_preprocessing != 'full':
+        sound_corpus = preprocess_sounds(sound_corpus, slice_fn, params.trim_silence)
 
     if params.sound_encoder == "MuQ":
         sound_corpus = [s for s in sound_corpus if s.size > 1024]  # MuQ requires sounds longer than 1024 samples
@@ -336,13 +326,11 @@ def run(params, cache=True):
     print(f"Mapping text to sound with method {mapping}...")
     # mapping options: identity, cluster_map
     if mapping == "identity":
-        mapping_fn = identity
+        neighbor_indices = identity(sound_embeddings, text_embeddings, params.distance_metric)
     elif mapping == "cluster":
-        mapping_fn = cluster_map
+        neighbor_indices, (sound_cluster_labels, text_cluster_labels) = cluster_map(sound_embeddings, text_embeddings, params.distance_metric)
     else:
         raise Exception("Invalid mapping provided")
-
-    neighbor_indices = mapping_fn(sound_embeddings, text_embeddings, params.distance_metric)
 
     print("Evaluating mapping...")
     if params.distance_metric == "euclidean":
@@ -350,7 +338,7 @@ def run(params, cache=True):
     elif params.distance_metric == "cosine":
         distance_fn = lambda x, y: distance.cosine(x, y)
 
-    score = evaluate_mapping(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
+    score = pairwise_score(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
     print(f"Score: {score}")
 
     print("Fetching sounds...")
@@ -362,15 +350,63 @@ def run(params, cache=True):
 
     print("Done.")
 
+    # Save scores if evaluator is provided
+    if evaluator:
+        scores = {"pairwise_score": score}
+
+        if params.mapping == "cluster":
+            # First, evaluate individual spaces
+            sound_eval = evaluate_clustering(sound_embeddings, sound_cluster_labels)
+            text_eval = evaluate_clustering(text_embeddings, text_cluster_labels)
+            
+            # Add prefixes to distinguish between sound and text metrics
+            sound_scores = {f"sound_{key}": value for key, value in sound_eval.items()}
+            text_scores = {f"text_{key}": value for key, value in text_eval.items()}
+            scores.update(sound_scores)
+            scores.update(text_scores)
+            
+            # Now evaluate the combined space
+            # 1. Create combined embeddings
+            combined_embeddings = np.vstack((sound_embeddings, text_embeddings))
+            
+            # 2. Create combined labels 
+            # - Keep original cluster assignments
+            # - Offset text clusters to avoid overlap (e.g., if sound has clusters 0,1,2, text would be 3,4,5)
+            num_sound_clusters = np.max(sound_cluster_labels)
+            combined_labels = np.concatenate([
+                sound_cluster_labels,
+                text_cluster_labels + num_sound_clusters + 1
+            ])
+            
+            # 3. Also create domain labels (0 for sound, 1 for text)
+            domain_labels = np.concatenate([
+                np.zeros(len(sound_embeddings)),
+                np.ones(len(text_embeddings))
+            ])
+            
+            # 4. Evaluate combined space with cluster labels
+            combined_cluster_eval = evaluate_clustering(combined_embeddings, combined_labels)
+            combined_scores = {f"combined_{key}": value for key, value in combined_cluster_eval.items()}
+            scores.update(combined_scores)
+            
+            # 5. Evaluate separation between domains
+            domain_eval = evaluate_clustering(combined_embeddings, domain_labels)
+            domain_scores = {f"domain_{key}": value for key, value in domain_eval.items()}
+            scores.update(domain_scores)
+        
+        evaluator.save_result(params, scores)
+
+        return scores
+
 if __name__ == "__main__":
 
-    e = Evaluator(
+    e = ParameterGenerator(
         sound_path="./corpora/sound/toy",
         text_path="./corpora/text/test.txt",
         sound_encoders=["MuQ"],
         text_encoders=["fastText"],
         mappings=["identity"],
-        sound_preprocessings=[1000, 'onsets'],
+        sound_preprocessings=['full'],
         normalizations=["standard"],
         dims=[2, 10, 30],
         distance_metrics=["euclidean", "cosine"],
@@ -379,4 +415,4 @@ if __name__ == "__main__":
 
     parameter_list = e.create_params()
     for parameters in parameter_list:
-        run(parameters, cache=True)
+        scores = run(parameters, cache=False)
