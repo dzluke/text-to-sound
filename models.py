@@ -5,6 +5,7 @@ from muq import MuQ
 from transformers import AutoTokenizer, RobertaModel
 import gensim.downloader as api
 import fasttext
+from librosa import resample
 
 
 def muq(wav, sr):
@@ -21,11 +22,15 @@ def muq(wav, sr):
     # Resample if the sample rate is not 24000 Hz
     target_sr = 24000
     if sr != target_sr:
-        wav = resample_poly(wav, up=target_sr, down=sr)  # Resample to 24000 Hz
+        wav = resample(wav, orig_sr=sr, target_sr=target_sr)  # Resample to 24000 Hz
         sr = target_sr  # Update sample rate variable
 
+    if wav.size < 1024:  # Muq doesn't work with shorter signals
+        print("Signal too short for MuQ, skipping...")
+        return None
+
     # Convert to torch tensor and move to device
-    wavs = torch.tensor(wav).unsqueeze(0).to(device)
+    wav = torch.tensor(wav).unsqueeze(0).to(device)
 
     # Load MuQ model
     muq = MuQ.from_pretrained("OpenMuQ/MuQ-large-msd-iter")
@@ -33,11 +38,15 @@ def muq(wav, sr):
 
     # Run model inference
     with torch.no_grad():
-        output = muq(wavs, output_hidden_states=True)
+        output = muq(wav, output_hidden_states=True)
 
     print('MuQ: feature shape: ', output.last_hidden_state.shape)
 
-    return output.last_hidden_state.cpu()
+    embedding = output.last_hidden_state.squeeze() # Remove batch dimension
+    # For MuQ: average across time
+    embedding = torch.mean(embedding, dim=0).flatten()
+
+    return embedding.cpu()
 
 
 def RoBERTa(text):

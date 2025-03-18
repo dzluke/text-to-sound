@@ -2,6 +2,7 @@ import librosa
 import numpy as np
 from itertools import product
 from main import SAMPLING_RATE
+from pathlib import Path
 
 class Parameter:
     """
@@ -20,6 +21,48 @@ class Parameter:
         if k is not None:
             self.k = k
         self.trim_silence = trim_silence
+
+    def to_string(self):
+        """
+        Returns a string representation of the Parameter object.
+        """
+        return (
+            f"Sound Path: {self.sound_path}, "
+            f"Text Path: {self.text_path}, "
+            f"Sound Encoder: {self.sound_encoder}, "
+            f"Text Encoder: {self.text_encoder}, "
+            f"Mapping: {self.mapping}, "
+            f"Sound Preprocessing: {self.sound_preprocessing}, "
+            f"Normalization: {self.normalization}, "
+            f"Dimension: {self.dim}, "
+            f"Distance Metric: {self.distance_metric}, "
+            f"K: {self.k if hasattr(self, 'k') else 'N/A'}, "
+            f"Trim Silence: {self.trim_silence}"
+        )
+    
+
+    def filename(self):
+        """
+        Returns a unique filename string for the parameter set.
+        """
+        sound_preprocessing_str = (
+            f"grain{self.sound_preprocessing}" if isinstance(self.sound_preprocessing, int) else self.sound_preprocessing
+        )
+        trim_silence_str = "trim_silence" if self.trim_silence else ""
+        filename = (
+            f"{Path(self.sound_path).stem}_"
+            f"{Path(self.text_path).stem}_"
+            f"{self.sound_encoder}_"
+            f"{self.text_encoder}_"
+            f"{self.mapping}_"
+            f"{sound_preprocessing_str}_"
+            f"{self.normalization}_"
+            f"dim{self.dim}_"
+            f"{self.distance_metric}_"
+            f"k{self.k if hasattr(self, 'k') else 'NA'}_"
+            f"{trim_silence_str}"
+        )
+        return filename.replace(" ", "_")
 
 class Evaluator:
     """

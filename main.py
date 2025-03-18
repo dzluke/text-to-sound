@@ -4,6 +4,7 @@ import librosa
 import soundfile as sf
 import torch
 from itertools import combinations
+import pickle
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -19,6 +20,8 @@ from util import *
 
 SAMPLING_RATE = 44100
 OUTPUT_PATH = Path("./output")
+CACHE_PATH = Path("./cache")
+
 
 def preprocess_sounds(sounds, slice_fn, trim_silence=True):
     if trim_silence:
@@ -41,20 +44,59 @@ def load_text_corpus(path):
     assert path.is_file()
     with open(path, "r") as f:
         return [word for line in f.readlines() for word in line.split()]
+    
+
+def generate_sound_cache_filename(corpus_name, slice_fn_name, encoder_name):
+    """
+    Generate a unique filename for sound embeddings based on corpus name, slice function, and encoder name.
+    """
+    CACHE_PATH.mkdir(parents=True, exist_ok=True)
+    return CACHE_PATH / f"sound_{corpus_name}_{slice_fn_name}_{encoder_name}.pkl"
+
+def generate_text_cache_filename(text_file_name, encoder_name):
+    """
+    Generate a unique filename for text embeddings based on text file name and encoder name.
+    """
+    CACHE_PATH.mkdir(parents=True, exist_ok=True)
+    return CACHE_PATH / f"text_{text_file_name}_{encoder_name}.pkl"
 
 
-def embed_sounds(sounds, encoder):
+def embed_sounds(sounds, encoder, cache_file=None):
+    # Check if cache_file is provided and exists
+    if cache_file is not None and cache_file.exists():
+        print(f"Loading sound embeddings from cache: {cache_file}")
+        with open(cache_file, "rb") as f:
+            return pickle.load(f)
+    
     embeddings = []
     for sound in sounds:
-        embedding = encoder(sound, SAMPLING_RATE).squeeze()
-        # For MuQ: average across time
-        embedding = torch.mean(embedding, dim=0).flatten()
+        embedding = encoder(sound, SAMPLING_RATE)
+        if embedding is None:
+            continue
         embeddings.append(embedding)
+
+    if cache_file is not None:
+        # Save embeddings to cache
+        with open(cache_file, "wb") as f:
+            pickle.dump(embeddings, f)
+    
     return torch.stack(embeddings)
 
 
-def embed_text(text, encoder):
-    return encoder(text)
+def embed_text(text, encoder, cache_file=None):
+    # if cache_file is provided, load the embeddings from there
+    if cache_file is not None and cache_file.exists():
+        print(f"Loading text embeddings from cache: {cache_file}")
+        with open(cache_file, "rb") as f:
+            return pickle.load(f)
+    
+    embeddings = encoder(text)
+
+    if cache_file is not None:
+        with open(cache_file, "wb") as f:
+            pickle.dump(embeddings, f)
+
+    return embeddings
 
 
 def find_nearest_neighbors(S, points, distance_metric):
@@ -70,16 +112,16 @@ def find_nearest_neighbors(S, points, distance_metric):
     return S[neighbor_indices], neighbor_indices
 
 
-def save_output(sound_list, output_path):
+def save_output(sound_list, filename):
     # concatenate audio files
     output = np.concatenate(sound_list)
 
-    output_path.mkdir(parents=True, exist_ok=True)
-    counter = 0
-    while (output_path / f"output{counter}.wav").exists():
+    OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
+    counter = 1
+    while (filename).exists():
+        filename = filename.parent / f"{filename.stem}_{counter}{filename.suffix}"
         counter += 1
 
-    filename = output_path / f"output{counter}.wav"
     sf.write(filename, output, SAMPLING_RATE)
 
 #################
@@ -208,7 +250,7 @@ def cluster_map(sound_embeddings, text_embeddings, distance_metric):
     return nearest_sound_idx
 
 
-def run(params):
+def run(params, cache=True):
     sound_corpus_path = Path(params.sound_path)
     text_corpus_path = Path(params.text_path)
 
@@ -236,11 +278,14 @@ def run(params):
     try:
         grain_size = int(params.sound_preprocessing / 1000.0 * SAMPLING_RATE)
         slice_fn = lambda y: equal_slices(y, grain_size)
+        slice_fn_name = f"grain{params.sound_preprocessing}"
     except TypeError:
         if params.sound_preprocessing == "onsets":
             slice_fn = lambda y: get_onsets(y)
+            slice_fn_name = "onsets"
         elif params.sound_preprocessing == "full":
             slice_fn = lambda y: y
+            slice_fn_name = "full"
         else:
             raise ValueError(f"Unknown preprocessing {params.sound_preprocessing}")
     sound_corpus = preprocess_sounds(sound_corpus, slice_fn, params.trim_silence)
@@ -248,11 +293,25 @@ def run(params):
     if params.sound_encoder == "MuQ":
         sound_corpus = [s for s in sound_corpus if s.size > 1024]  # MuQ requires sounds longer than 1024 samples
 
+    sound_cache_file = None
+    text_cache_file = None
+    if cache:
+        # Generate cache file paths
+        sound_cache_file = generate_sound_cache_filename(
+            corpus_name=sound_corpus_path.stem,
+            slice_fn_name=slice_fn_name,
+            encoder_name=params.sound_encoder,
+        )
+        text_cache_file = generate_text_cache_filename(
+            text_file_name=text_corpus_path.name,
+            encoder_name=params.text_encoder,
+        )
+
     print("Embedding sounds...")
-    sound_embeddings = embed_sounds(sound_corpus, sound_encoder)
+    sound_embeddings = embed_sounds(sound_corpus, sound_encoder, sound_cache_file)
 
     print("Embedding text...")
-    text_embeddings = embed_text(" ".join(text_corpus), text_encoder)
+    text_embeddings = embed_text(" ".join(text_corpus), text_encoder, text_cache_file)
 
     # check again to see if this will be a valid run
     if params.dim > len(sound_embeddings) or params.dim > len(text_embeddings):
@@ -298,7 +357,8 @@ def run(params):
     output_sounds = [sound_corpus[i] for i in neighbor_indices]
 
     print("Saving output...")
-    save_output(output_sounds, OUTPUT_PATH)
+    save_path = OUTPUT_PATH / f"{params.filename()}.wav"
+    save_output(output_sounds, save_path)
 
     print("Done.")
 
@@ -310,7 +370,7 @@ if __name__ == "__main__":
         sound_encoders=["MuQ"],
         text_encoders=["fastText"],
         mappings=["identity"],
-        sound_preprocessings=[1000],
+        sound_preprocessings=[1000, 'onsets'],
         normalizations=["standard"],
         dims=[2, 10, 30],
         distance_metrics=["euclidean", "cosine"],
@@ -319,4 +379,4 @@ if __name__ == "__main__":
 
     parameter_list = e.create_params()
     for parameters in parameter_list:
-        run(parameters)
+        run(parameters, cache=True)
