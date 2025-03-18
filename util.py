@@ -34,17 +34,21 @@ class Parameter:
         """
         Returns a string representation of the Parameter object.
         """
+        k_info = ""
+        if self.mapping == 'cluster':
+            k_info = f"K: {self.k if hasattr(self, 'k') else 'N/A'}, "
+        
         return (
             f"Sound Path: {self.sound_path}, "
             f"Text Path: {self.text_path}, "
             f"Sound Encoder: {self.sound_encoder}, "
             f"Text Encoder: {self.text_encoder}, "
             f"Mapping: {self.mapping}, "
+            f"{k_info}"
             f"Sound Preprocessing: {self.sound_preprocessing}, "
             f"Normalization: {self.normalization}, "
             f"Dimension: {self.dim}, "
             f"Distance Metric: {self.distance_metric}, "
-            f"K: {self.k if hasattr(self, 'k') else 'N/A'}, "
             f"Trim Silence: {self.trim_silence}"
         )
     
@@ -57,6 +61,10 @@ class Parameter:
             f"grain{self.sound_preprocessing}" if isinstance(self.sound_preprocessing, int) else self.sound_preprocessing
         )
         trim_silence_str = "trim_silence" if self.trim_silence else ""
+        
+        # Include k in the filename only for cluster mapping
+        k_str = f"k{self.k}_" if self.mapping == 'cluster' and hasattr(self, 'k') else ""
+        
         filename = (
             f"{Path(self.sound_path).stem}_"
             f"{Path(self.text_path).stem}_"
@@ -65,9 +73,9 @@ class Parameter:
             f"{self.mapping}_"
             f"{sound_preprocessing_str}_"
             f"{self.normalization}_"
-            f"dim{self.dim}_"
             f"{self.distance_metric}_"
-            f"k{self.k if hasattr(self, 'k') else 'NA'}_"
+            f"dim{self.dim}_"
+            f"{k_str}"
             f"{trim_silence_str}"
         )
         return filename.replace(" ", "_")
@@ -94,18 +102,6 @@ class ParameterGenerator:
         if clustering_evaluations is not None:
             self.clustering_evaluations = clustering_evaluations
 
-    # def create_params(self):
-        # params = []
-        # for sound_encoder in self.sound_encoders:
-        #     for text_encoder in self.text_encoders:
-        #         for mapping in self.mappings:
-        #             for sound_preprocessing in self.sound_preprocessings:
-        #                 for normalization in self.normalizations:
-        #                     for dim in self.dims:
-        #                         for distance_metric in self.distance_metrics:
-        #                             p = Parameter(self.sound_path, self.text_path, sound_encoder, text_encoder, mapping, sound_preprocessing, normalization, dim, distance_metric)
-        #                             params.append(p)
-
     def create_params(self):
         param_combinations = product(
             self.sound_encoders,
@@ -116,21 +112,38 @@ class ParameterGenerator:
             self.dims,
             self.distance_metrics
         )
-
-        params = [
-            Parameter(
-                self.sound_path,
-                self.text_path,
-                sound_encoder,
-                text_encoder,
-                mapping,
-                sound_preprocessing,
-                normalization,
-                dims,
-                distance_metric
-            )
-            for sound_encoder, text_encoder, mapping, sound_preprocessing, normalization, dims, distance_metric in param_combinations
-        ]
+        params = []
+        for sound_encoder, text_encoder, mapping, sound_preprocessing, normalization, dims, distance_metric in param_combinations:
+            if mapping == 'cluster' and hasattr(self, 'ks'):
+                for k in self.ks:
+                    params.append(
+                        Parameter(
+                            self.sound_path,
+                            self.text_path,
+                            sound_encoder,
+                            text_encoder,
+                            mapping,
+                            sound_preprocessing,
+                            normalization,
+                            dims,
+                            distance_metric,
+                            k=k
+                        )
+                    )
+            else:
+                params.append(
+                    Parameter(
+                        self.sound_path,
+                        self.text_path,
+                        sound_encoder,
+                        text_encoder,
+                        mapping,
+                        sound_preprocessing,
+                        normalization,
+                        dims,
+                        distance_metric
+                    )
+                )
 
         return params
 

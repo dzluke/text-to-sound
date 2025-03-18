@@ -1,3 +1,7 @@
+# Set OMP_NUM_THREADS to 1 to avoid KMeans memory leak on Windows
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+
 import numpy as np
 from pathlib import Path
 import librosa
@@ -5,6 +9,7 @@ import soundfile as sf
 import torch
 from itertools import combinations
 import pickle
+import random
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -13,6 +18,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 
 from scipy.spatial import distance
+from scipy.stats import wasserstein_distance as scipy_wasserstein
 
 from models import muq, RoBERTa, word2vec, fastText
 from util import Parameter, ParameterGenerator, load_soundfiles, remove_silence, set_sampling_rate
@@ -157,26 +163,69 @@ def get_onsets(y):
 def evaluate_clustering(X, labels):
     eval = {}
 
-    silhouette_avg = silhouette_score(X, labels)  # higher is better. The best value is 1 and the worst value is -1
-    ch_score = calinski_harabasz_score(X, labels) # higher is better
-    db_score = davies_bouldin_score(X, labels)  # lower is better. The best value is 0.
-
-    eval["silhouette_score (higher is better)"] = silhouette_avg
-    eval["calinski_harabasz_score (higher is better)"] = ch_score
-    eval["davies_bouldin_score (lower is better)"] = db_score
+    # Check if we have enough samples in each cluster for silhouette score
+    unique_labels = np.unique(labels)
+    sample_counts = [np.sum(labels == label) for label in unique_labels]
+    
+    if len(unique_labels) < 2:
+        # Need at least 2 clusters
+        print("Warning: Cannot calculate clustering metrics with fewer than 2 clusters")
+    elif min(sample_counts) < 2:
+        # Need at least 2 samples per cluster for silhouette score
+        print(f"Warning: Cannot calculate silhouette score with fewer than 2 samples per cluster (min: {min(sample_counts)})")
+        
+        # These metrics can still be calculated with 1 sample per cluster
+        try:
+            eval["calinski_harabasz_score"] = calinski_harabasz_score(X, labels)
+            eval["davies_bouldin_score"] = davies_bouldin_score(X, labels)
+        except Exception as e:
+            print(f"Error calculating cluster metrics: {e}")
+    else:
+        # Calculate all metrics
+        try:
+            silhouette_avg = silhouette_score(X, labels)
+            ch_score = calinski_harabasz_score(X, labels)
+            db_score = davies_bouldin_score(X, labels)
+            
+            eval["silhouette_score"] = silhouette_avg
+            eval["calinski_harabasz_score"] = ch_score
+            eval["davies_bouldin_score"] = db_score
+        except Exception as e:
+            print(f"Error calculating cluster metrics: {e}")
 
     return eval
 
 
-def pairwise_score(t_embs, s_embs, distance_metric):
+####################
+# DISTANCE METRICS #
+####################
+
+def pairwise_distance(t_embs, s_embs, distance_metric):
     """
     s_embs[i] is the sound mapped from t_embs[i]
     :param t_embs:
     :param s_embs:
     :return: a distance
     """
+    max_pairs = 1000
     distance = 0
     num_t_embs = t_embs.shape[0]
+
+        # If we have fewer possible pairs than max_pairs, use all of them
+    total_possible_pairs = (num_t_embs * (num_t_embs - 1)) // 2
+    if total_possible_pairs <= max_pairs:
+        pairs = list(combinations(range(num_t_embs), 2))
+    else:
+        # Sample random pairs without replacement
+        all_indices = list(range(num_t_embs))
+        pairs = []
+        while len(pairs) < max_pairs:
+            i, j = random.sample(all_indices, 2)
+            if i > j:  # Ensure consistent ordering
+                i, j = j, i
+            if (i, j) not in pairs:  # Avoid duplicates
+                pairs.append((i, j))
+    
     pairs = list(combinations(range(num_t_embs), 2))  # list of all possible pairs of indices
     for i, j in pairs:
         t1, t2 = t_embs[i], t_embs[j]
@@ -188,6 +237,37 @@ def pairwise_score(t_embs, s_embs, distance_metric):
     distance /= len(pairs)  # normalize by the number of pairs
     return distance
 
+def wasserstein_distance(t_embs, s_embs, distance_metric, num_samples=1000):
+    """
+    Compare distance distributions instead of individual pairs
+    
+    Args:
+        t_embs: Text embeddings
+        s_embs: Sound embeddings
+        distance_metric: Function to calculate distance between embeddings
+        num_samples: Number of pairs to sample for distribution comparison
+        
+    Returns:
+        float: Wasserstein distance between text and sound distance distributions
+    """
+    num_t_embs = t_embs.shape[0]
+    
+    # Generate random pairs for sampling
+    pairs = random.sample(list(combinations(range(num_t_embs), 2)), 
+                         min(num_samples, num_t_embs*(num_t_embs-1)//2))
+    
+    # Calculate distance distributions
+    text_distances = []
+    sound_distances = []
+    
+    for i, j in pairs:
+        t1, t2 = t_embs[i], t_embs[j]
+        s1, s2 = s_embs[i], s_embs[j]
+        text_distances.append(distance_metric(t1, t2))
+        sound_distances.append(distance_metric(s1, s2))
+    
+    # Compare the distributions using Wasserstein distance
+    return scipy_wasserstein(text_distances, sound_distances)
 
 #####################
 # MAPPING FUNCTIONS #
@@ -201,9 +281,8 @@ def identity(sound_embeddings, text_embeddings, distance_metric):
     return nn_idx
 
 
-def cluster_map(sound_embeddings, text_embeddings, distance_metric):
-    print("Applying clustering...")
-    k = 2
+def cluster_map(sound_embeddings, text_embeddings, distance_metric, k):
+    print(f"Applying clustering with k={k}...")
     sound_kmeans = KMeans(n_clusters=k, n_init=10).fit(sound_embeddings)
     text_kmeans = KMeans(n_clusters=k, n_init=10).fit(text_embeddings)
 
@@ -239,7 +318,7 @@ def cluster_map(sound_embeddings, text_embeddings, distance_metric):
     return nearest_sound_idx, (sound_cluster_labels, text_cluster_labels)  # return the cluster labels for evaluation purposes
 
 
-def run(params, evaluator=None, cache=True):
+def run(params, evaluator=None, cache=True, save_output=False):
     sound_corpus_path = Path(params.sound_path)
     text_corpus_path = Path(params.text_path)
 
@@ -261,7 +340,7 @@ def run(params, evaluator=None, cache=True):
     if params.dim > len(sound_corpus) or params.dim > len(text_corpus):
         print(f"!!!: Input PCA dimension {params.dim} cannot be larger than length of sound corpus ({len(sound_corpus)}) or text corpus ({len(text_corpus)})")
         print("Ending this run.")
-        return
+        return None
 
     # slice_fn: a function that determines how to separate sounds
     try:
@@ -308,7 +387,7 @@ def run(params, evaluator=None, cache=True):
         print(
             f"!!!: Input PCA dimension {params.dim} cannot be larger than length of sound embeds ({len(sound_embeddings)}) or text embeds ({len(text_embeddings)})")
         print("Ending this run.")
-        return
+        return None
 
     print("Transforming embeddings...")
     # what transformations will we apply to the feature space?
@@ -328,7 +407,11 @@ def run(params, evaluator=None, cache=True):
     if mapping == "identity":
         neighbor_indices = identity(sound_embeddings, text_embeddings, params.distance_metric)
     elif mapping == "cluster":
-        neighbor_indices, (sound_cluster_labels, text_cluster_labels) = cluster_map(sound_embeddings, text_embeddings, params.distance_metric)
+        if params.k >= len(sound_embeddings) or params.k >= len(text_embeddings):
+            print(f"!!!: Input k {params.k} cannot be larger than length of sound embeds ({len(sound_embeddings)}) or text embeds ({len(text_embeddings)})")
+            print("Ending this run.")
+            return None
+        neighbor_indices, (sound_cluster_labels, text_cluster_labels) = cluster_map(sound_embeddings, text_embeddings, params.distance_metric, k=params.k)
     else:
         raise Exception("Invalid mapping provided")
 
@@ -338,15 +421,16 @@ def run(params, evaluator=None, cache=True):
     elif params.distance_metric == "cosine":
         distance_fn = lambda x, y: distance.cosine(x, y)
 
-    score = pairwise_score(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
-    print(f"Score: {score}")
+    score = pairwise_distance(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
+    print(f"Distance: {score}")
 
-    print("Fetching sounds...")
-    output_sounds = [sound_corpus[i] for i in neighbor_indices]
+    if save_output:
+        print("Fetching sounds...")
+        output_sounds = [sound_corpus[i] for i in neighbor_indices]
 
-    print("Saving output...")
-    save_path = OUTPUT_PATH / f"{params.filename()}.wav"
-    save_output(output_sounds, save_path)
+        print("Saving output...")
+        save_path = OUTPUT_PATH / f"{params.filename()}.wav"
+        save_output(output_sounds, save_path)
 
     print("Done.")
 
@@ -415,4 +499,4 @@ if __name__ == "__main__":
 
     parameter_list = e.create_params()
     for parameters in parameter_list:
-        scores = run(parameters, cache=False)
+        scores = run(parameters, cache=False, save_output=True)

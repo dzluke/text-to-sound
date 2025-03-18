@@ -162,26 +162,104 @@ class EvaluationFramework:
         plt.close()
     
     def generate_report(self):
-        """Generate a comprehensive report of all evaluations."""
+        """
+        Generate a comprehensive report of all evaluation results.
+        
+        Returns:
+            dict: A dictionary containing the report data
+        """
         df = pd.read_csv(self.results_file)
         
+        # Check which metrics are available in the dataframe
+        available_metrics = set(df.columns)
+        
         report = {
-            "total_evaluations": len(df),
-            "sound_corpora": df["sound_corpus"].unique().tolist(),
-            "text_corpora": df["text_corpus"].unique().tolist(),
-            "best_pairwise": self.find_best_parameters("pairwise_score").to_dict(orient="records")[0],
-            "best_silhouette": self.find_best_parameters("silhouette_score", lower_is_better=False).to_dict(orient="records")[0],
-            "encoder_comparison": self.compare_encoders().reset_index().to_dict(orient="records")
+            "total_runs": len(df),
+            "unique_sound_corpora": df["sound_corpus"].nunique(),
+            "unique_text_corpora": df["text_corpus"].nunique(),
         }
         
-        # Generate plots for key parameters
-        for param in ["sound_encoder", "text_encoder", "mapping_method", "dim"]:
-            self.plot_parameter_impact(param)
+        # Add best pairwise score if available
+        if "pairwise_score" in available_metrics:
+            report["best_pairwise"] = self.find_best_parameters("pairwise_score").to_dict(orient="records")[0]
+        elif "pairwise_distance" in available_metrics:
+            report["best_pairwise"] = self.find_best_parameters("pairwise_distance").to_dict(orient="records")[0]
         
-        # Save the report
-        report_file = self.results_dir / "evaluation_report.json"
-        with open(report_file, "w") as f:
+        # Add best silhouette scores if available
+        if "combined_silhouette_score" in available_metrics:
+            report["best_combined_silhouette"] = self.find_best_parameters(
+                "combined_silhouette_score", 
+                lower_is_better=False
+            ).to_dict(orient="records")[0]
+        
+        if "sound_silhouette_score" in available_metrics:
+            report["best_sound_silhouette"] = self.find_best_parameters(
+                "sound_silhouette_score", 
+                lower_is_better=False
+            ).to_dict(orient="records")[0]
+        
+        if "text_silhouette_score" in available_metrics:
+            report["best_text_silhouette"] = self.find_best_parameters(
+                "text_silhouette_score", 
+                lower_is_better=False
+            ).to_dict(orient="records")[0]
+        
+        # Summary by sound_corpus
+        report["by_sound_corpus"] = {}
+        for corpus in df["sound_corpus"].unique():
+            corpus_df = df[df["sound_corpus"] == corpus]
+            
+            corpus_report = {
+                "runs": len(corpus_df)
+            }
+            
+            # Add average pairwise score if available
+            if "pairwise_score" in available_metrics:
+                corpus_report["avg_pairwise_score"] = corpus_df["pairwise_score"].mean()
+                corpus_report["best_pairwise"] = self.find_best_parameters(
+                    "pairwise_score", 
+                    sound_corpus=corpus
+                ).to_dict(orient="records")[0]
+            elif "pairwise_distance" in available_metrics:
+                corpus_report["avg_pairwise_distance"] = corpus_df["pairwise_distance"].mean()
+                corpus_report["best_pairwise"] = self.find_best_parameters(
+                    "pairwise_distance", 
+                    sound_corpus=corpus
+                ).to_dict(orient="records")[0]
+            
+            report["by_sound_corpus"][corpus] = corpus_report
+        
+        # Summary by text_corpus (similar structure)
+        report["by_text_corpus"] = {}
+        for corpus in df["text_corpus"].unique():
+            corpus_df = df[df["text_corpus"] == corpus]
+            
+            corpus_report = {
+                "runs": len(corpus_df)
+            }
+            
+            # Add average pairwise score if available
+            if "pairwise_score" in available_metrics:
+                corpus_report["avg_pairwise_score"] = corpus_df["pairwise_score"].mean()
+                corpus_report["best_pairwise"] = self.find_best_parameters(
+                    "pairwise_score", 
+                    text_corpus=corpus
+                ).to_dict(orient="records")[0]
+            elif "pairwise_distance" in available_metrics:
+                corpus_report["avg_pairwise_distance"] = corpus_df["pairwise_distance"].mean()
+                corpus_report["best_pairwise"] = self.find_best_parameters(
+                    "pairwise_distance", 
+                    text_corpus=corpus
+                ).to_dict(orient="records")[0]
+            
+            report["by_text_corpus"][corpus] = corpus_report
+        
+        # Save report to JSON
+        report_path = self.results_dir / "evaluation_report.json"
+        with open(report_path, "w") as f:
             json.dump(report, f, indent=2)
+        
+        print(f"Report saved to {report_path}")
         
         return report
 
