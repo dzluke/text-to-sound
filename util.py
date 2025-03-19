@@ -16,7 +16,10 @@ class Parameter:
     """
     A set of parameters for one run of the system
     """
-    def __init__(self, sound_path, text_path, sound_encoder, text_encoder, mapping, sound_preprocessing, normalization, dim, distance_metric, k=None, trim_silence=True):
+    def __init__(self, sound_path, text_path, sound_encoder, text_encoder, mapping, 
+                 sound_preprocessing, normalization, dim, distance_metric, k=None, 
+                 trim_silence=True, icp_iterations=50, batch_size=32, cycle_weight=0.1, 
+                 learning_rate=0.01):
         self.sound_path = sound_path
         self.text_path = text_path
         self.sound_encoder = sound_encoder
@@ -29,6 +32,13 @@ class Parameter:
         if k is not None:
             self.k = k
         self.trim_silence = trim_silence
+        
+        # Add ICP-specific parameters
+        if mapping == "icp":
+            self.icp_iterations = icp_iterations
+            self.batch_size = batch_size
+            self.cycle_weight = cycle_weight
+            self.learning_rate = learning_rate
 
     def to_string(self):
         """
@@ -38,6 +48,15 @@ class Parameter:
         if self.mapping == 'cluster':
             k_info = f"K: {self.k if hasattr(self, 'k') else 'N/A'}, "
         
+        icp_info = ""
+        if self.mapping == 'icp':
+            icp_info = (
+                f"ICP Iterations: {self.icp_iterations if hasattr(self, 'icp_iterations') else 50}, "
+                f"Batch Size: {self.batch_size if hasattr(self, 'batch_size') else 32}, "
+                f"Cycle Weight: {self.cycle_weight if hasattr(self, 'cycle_weight') else 0.1}, "
+                f"Learning Rate: {self.learning_rate if hasattr(self, 'learning_rate') else 0.01}, "
+            )
+        
         return (
             f"Sound Path: {self.sound_path}, "
             f"Text Path: {self.text_path}, "
@@ -45,6 +64,7 @@ class Parameter:
             f"Text Encoder: {self.text_encoder}, "
             f"Mapping: {self.mapping}, "
             f"{k_info}"
+            f"{icp_info}"
             f"Sound Preprocessing: {self.sound_preprocessing}, "
             f"Normalization: {self.normalization}, "
             f"Dimension: {self.dim}, "
@@ -65,6 +85,11 @@ class Parameter:
         # Include k in the filename only for cluster mapping
         k_str = f"k{self.k}_" if self.mapping == 'cluster' and hasattr(self, 'k') else ""
         
+        # Include ICP parameters if using ICP mapping
+        icp_str = ""
+        if self.mapping == 'icp' and hasattr(self, 'icp_iterations'):
+            icp_str = f"icp{self.icp_iterations}_cw{self.cycle_weight}_lr{self.learning_rate}_"
+        
         filename = (
             f"{Path(self.sound_path).stem}_"
             f"{Path(self.text_path).stem}_"
@@ -76,6 +101,7 @@ class Parameter:
             f"{self.distance_metric}_"
             f"dim{self.dim}_"
             f"{k_str}"
+            f"{icp_str}"
             f"{trim_silence_str}"
         )
         return filename.replace(" ", "_")
@@ -86,7 +112,10 @@ class ParameterGenerator:
     all possible input parameters.
     """
 
-    def __init__(self, sound_path, text_path, sound_encoders, text_encoders, mappings, sound_preprocessings, normalizations, dims, distance_metrics, mapping_evaluations, ks=None, clustering_evaluations=None):
+    def __init__(self, sound_path, text_path, sound_encoders, text_encoders, mappings, 
+                 sound_preprocessings, normalizations, dims, distance_metrics, 
+                 mapping_evaluations, ks=None, clustering_evaluations=None,
+                 icp_iterations=None, batch_sizes=None, cycle_weights=None, learning_rates=None):
         self.sound_path = sound_path
         self.text_path = text_path
         self.sound_encoders = sound_encoders
@@ -101,6 +130,27 @@ class ParameterGenerator:
             self.ks = ks
         if clustering_evaluations is not None:
             self.clustering_evaluations = clustering_evaluations
+            
+        # ICP parameters
+        if icp_iterations is not None:
+            self.icp_iterations = icp_iterations
+        else:
+            self.icp_iterations = [50]  # Default value
+            
+        if batch_sizes is not None:
+            self.batch_sizes = batch_sizes
+        else:
+            self.batch_sizes = [32]  # Default value
+            
+        if cycle_weights is not None:
+            self.cycle_weights = cycle_weights
+        else:
+            self.cycle_weights = [0.1]  # Default value
+            
+        if learning_rates is not None:
+            self.learning_rates = learning_rates
+        else:
+            self.learning_rates = [0.01]  # Default value
 
     def create_params(self):
         param_combinations = product(
@@ -131,6 +181,29 @@ class ParameterGenerator:
                             k=k
                         )
                     )
+            elif mapping == 'icp':
+                # Generate parameter combinations for ICP
+                for icp_iter in self.icp_iterations:
+                    for batch_size in self.batch_sizes:
+                        for cycle_weight in self.cycle_weights:
+                            for lr in self.learning_rates:
+                                params.append(
+                                    Parameter(
+                                        self.sound_path,
+                                        self.text_path,
+                                        sound_encoder,
+                                        text_encoder,
+                                        mapping,
+                                        sound_preprocessing,
+                                        normalization,
+                                        dims,
+                                        distance_metric,
+                                        icp_iterations=icp_iter,
+                                        batch_size=batch_size,
+                                        cycle_weight=cycle_weight,
+                                        learning_rate=lr
+                                    )
+                                )
             else:
                 params.append(
                     Parameter(

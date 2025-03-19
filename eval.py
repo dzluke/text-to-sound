@@ -22,7 +22,7 @@ class EvaluationFramework:
             columns = [
                 "sound_corpus", "text_corpus", "sound_encoder", "text_encoder",
                 "mapping_method", "sound_preprocessing", "normalization",
-                "dim", "distance_metric", "pairwise_score", 
+                "dim", "distance_metric", "pairwise_distance", 
                 # Sound cluster metrics
                 "sound_silhouette_score", "sound_calinski_harabasz_score", "sound_davies_bouldin_score",
                 # Text cluster metrics
@@ -92,7 +92,7 @@ class EvaluationFramework:
         #         "scores": scores
         #     }, f, indent=2)
     
-    def find_best_parameters(self, metric="pairwise_score", lower_is_better=True, 
+    def find_best_parameters(self, metric="pairwise_distance", lower_is_better=True, 
                             sound_corpus=None, text_corpus=None):
         """
         Find the best parameter set based on a specific metric.
@@ -121,7 +121,7 @@ class EvaluationFramework:
         # Return the top results
         return df_sorted.head(10)
     
-    def compare_encoders(self, metric="pairwise_score", lower_is_better=True):
+    def compare_encoders(self, metric="pairwise_distance", lower_is_better=True):
         """
         Compare performance of different encoder combinations across all corpora.
         
@@ -141,7 +141,7 @@ class EvaluationFramework:
         ascending = lower_is_better
         return grouped.sort_values(by="mean", ascending=ascending)
     
-    def plot_parameter_impact(self, parameter, metric="pairwise_score"):
+    def plot_parameter_impact(self, parameter, metric="pairwise_distance"):
         """
         Create boxplot showing impact of a parameter on the evaluation metric.
         
@@ -180,10 +180,8 @@ class EvaluationFramework:
             "unique_text_corpora": df["text_corpus"].nunique(),
         }
         
-        # Add best pairwise score if available
-        if "pairwise_score" in available_metrics:
-            report["best_pairwise"] = self.find_best_parameters("pairwise_score").to_dict(orient="records")[0]
-        elif "pairwise_distance" in available_metrics:
+        # Add best pairwise distance
+        if "pairwise_distance" in available_metrics:
             report["best_pairwise"] = self.find_best_parameters("pairwise_distance").to_dict(orient="records")[0]
         
         # Add best silhouette scores if available
@@ -214,14 +212,8 @@ class EvaluationFramework:
                 "runs": len(corpus_df)
             }
             
-            # Add average pairwise score if available
-            if "pairwise_score" in available_metrics:
-                corpus_report["avg_pairwise_score"] = corpus_df["pairwise_score"].mean()
-                corpus_report["best_pairwise"] = self.find_best_parameters(
-                    "pairwise_score", 
-                    sound_corpus=corpus
-                ).to_dict(orient="records")[0]
-            elif "pairwise_distance" in available_metrics:
+            # Add average pairwise distance if available
+            if "pairwise_distance" in available_metrics:
                 corpus_report["avg_pairwise_distance"] = corpus_df["pairwise_distance"].mean()
                 corpus_report["best_pairwise"] = self.find_best_parameters(
                     "pairwise_distance", 
@@ -239,14 +231,8 @@ class EvaluationFramework:
                 "runs": len(corpus_df)
             }
             
-            # Add average pairwise score if available
-            if "pairwise_score" in available_metrics:
-                corpus_report["avg_pairwise_score"] = corpus_df["pairwise_score"].mean()
-                corpus_report["best_pairwise"] = self.find_best_parameters(
-                    "pairwise_score", 
-                    text_corpus=corpus
-                ).to_dict(orient="records")[0]
-            elif "pairwise_distance" in available_metrics:
+            # Add average pairwise distance if available
+            if "pairwise_distance" in available_metrics:
                 corpus_report["avg_pairwise_distance"] = corpus_df["pairwise_distance"].mean()
                 corpus_report["best_pairwise"] = self.find_best_parameters(
                     "pairwise_distance", 
@@ -288,14 +274,15 @@ class EvaluationFramework:
             return df[column].unique().tolist()
         return []
 
-def analyze_experiments(results_file="./evaluation_results/evaluation_results.csv"):
+def analyze_experiments(results_file="./evaluation_results/evaluation_results.csv", filter_params=None):
     """
-    Analyze all experiments from the evaluation results file, calculate relevant metrics,
-    print the analysis, and generate plots.
+    Analyze experiments from the evaluation results file, with optional filtering by parameters.
 
     Args:
         results_file (str): Path to the evaluation results CSV file.
-        output_dir (str): Directory to save the generated plots.
+        filter_params (dict, optional): Dictionary of parameters to filter by.
+            Example: {'sound_corpus': 'mothman', 'dim': [2, 5], 'mapping_method': 'cluster'}
+            If None, all experiments are analyzed.
     """
     # Load the results file
     results_file = Path(results_file)
@@ -307,16 +294,49 @@ def analyze_experiments(results_file="./evaluation_results/evaluation_results.cs
 
     if df.empty:
         print("No results to analyze.")
-        return    
+        return
+    
+    # Apply filters if provided
+    if filter_params:
+        print("\n" + "="*50)
+        print(f"FILTERED ANALYSIS - Using the following filters:")
+        for param, values in filter_params.items():
+            if isinstance(values, list):
+                print(f"  * {param}: {values}")
+            else:
+                print(f"  * {param}: {values}")
+        print("="*50)
+        
+        filtered_df = df.copy()
+        filter_description = []
+        
+        for param, values in filter_params.items():
+            if param in filtered_df.columns:
+                # Handle both single values and lists of values
+                if isinstance(values, list):
+                    filtered_df = filtered_df[filtered_df[param].isin(values)]
+                    filter_description.append(f"{param} in {values}")
+                else:
+                    filtered_df = filtered_df[filtered_df[param] == values]
+                    filter_description.append(f"{param} = {values}")
+        
+        # Check if we have any results after filtering
+        if filtered_df.empty:
+            print(f"No results match the filter criteria: {', '.join(filter_description)}")
+            return
+            
+        print(f"\nAnalyzing {len(filtered_df)} experiments matching the filter criteria")
+        print(f"(Total experiments in dataset: {len(df)})")
+        df = filtered_df
+    else:
+        print(f"\nAnalyzing all {len(df)} experiments (no filters applied)")
 
     print("\n" + "=" * 50)
     print("ANALYSIS OF EVALUATION RESULTS")
     print("=" * 50 + "\n")
 
-    # Focus on pairwise distance metrics
-    if "pairwise_score" in df.columns:
-        metric = "pairwise_score"
-    elif "pairwise_distance" in df.columns:
+
+    if "pairwise_distance" in df.columns:
         metric = "pairwise_distance"
     else:
         print("No pairwise distance/score metric found in results.")
@@ -380,9 +400,32 @@ def analyze_experiments(results_file="./evaluation_results/evaluation_results.cs
             print(f"Mapping: {mapping}")
             print(f"  No valid results found")
             print()
+    
+    # Additional summary statistics
+    print("\nSUMMARY STATISTICS")
+    print("-" * 50)
+    
+    # Print unique values for key parameters
+    print("Parameter distribution in analyzed experiments:")
+    for param in ['sound_corpus', 'text_corpus', 'sound_encoder', 'text_encoder', 'dim']:
+        if param in df.columns:
+            unique_values = df[param].value_counts().to_dict()
+            print(f"  {param}: {unique_values}")
+    
+    # Print best overall results
+    print("\nBest overall results:")
+    best_idx = df[metric].idxmin() if "distance" in metric else df[metric].idxmax()
+    if pd.notna(best_idx):
+        best_row = df.loc[best_idx]
+        print(f"  Best {metric}: {best_row[metric]:.4f}")
+        for param in ['sound_corpus', 'text_corpus', 'sound_encoder', 'text_encoder', 
+                      'mapping_method', 'dim', 'k']:
+            if param in best_row and pd.notna(best_row[param]):
+                print(f"    {param}: {best_row[param]}")
 
-    print("Analysis complete.")
-
+    print("\nAnalysis complete.")
+    
+    return df  # Return the filtered dataframe for further analysis if needed
 
 def generate_plots(results_file="./evaluation_results/evaluation_results.csv", output_dir="./evaluation_results/plots"):
     """
@@ -409,7 +452,7 @@ def generate_plots(results_file="./evaluation_results/evaluation_results.csv", o
     # Generate plots
     print("Generating plots...")
     plot_parameters = ["mapping_method", "sound_encoder", "text_encoder", "dim", "k"]
-    metrics = ['pairwse_distance']
+    metrics = ['pairwise_distance']
     for param in plot_parameters:
         if param in df.columns and len(df[param].unique()) > 1:
             for metric in metrics:
@@ -424,4 +467,5 @@ def generate_plots(results_file="./evaluation_results/evaluation_results.csv", o
                 print(f"Saved plot: {plot_file}")
 
 if __name__ == "__main__":
-    analyze_experiments()
+    filter = {'sound_corpus': 'mothman', 'k': [2], 'mapping_method': 'cluster'}
+    analyze_experiments(filter_params=filter)

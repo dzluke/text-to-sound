@@ -323,7 +323,151 @@ def cluster_map(sound_embeddings, text_embeddings, distance_metric, k):
     return nearest_sound_idx, (sound_cluster_labels, text_cluster_labels)  # return the cluster labels for evaluation purposes
 
 
-def run(params, evaluator=None, cache=True, save_output=False):
+def icp_map(sound_embeddings, text_embeddings, distance_metric, max_iterations=50, batch_size=32, cycle_weight=0.1, learning_rate=0.01):
+    """
+    Mini-Batch Cycle Iterative Closest Point (MBC-ICP) method for mapping between spaces.
+    
+    Args:
+        sound_embeddings (np.ndarray): Sound embeddings (S space)
+        text_embeddings (np.ndarray): Text embeddings (T space)
+        distance_metric (str): Distance metric to use
+        max_iterations (int): Maximum number of iterations
+        batch_size (int): Mini-batch size for optimization
+        cycle_weight (float): Weight for cycle consistency loss
+        learning_rate (float): Learning rate for optimization
+        
+    Returns:
+        tuple: (nearest_sound_indices, None)
+    """
+    print(f"Applying ICP mapping with {max_iterations} iterations...")
+    
+    # Initialize transformation matrices
+    dim = sound_embeddings.shape[1]
+    W_S = np.eye(dim)  # Sound to Text
+    W_T = np.eye(dim)  # Text to Sound
+    
+    # Define distance function based on the metric
+    if distance_metric == "euclidean":
+        def dist_fn(x, y):
+            return np.linalg.norm(x - y, axis=1)
+    elif distance_metric == "cosine":
+        def dist_fn(x, y):
+            return np.array([distance.cosine(x[i], y[i]) for i in range(len(x))])
+    else:
+        raise ValueError(f"Unsupported distance metric: {distance_metric}")
+    
+    # Convert to numpy arrays if they aren't already
+    if isinstance(sound_embeddings, torch.Tensor):
+        sound_embeddings = sound_embeddings.detach().numpy()
+    if isinstance(text_embeddings, torch.Tensor):
+        text_embeddings = text_embeddings.detach().numpy()
+    
+    # Main optimization loop
+    for iter_num in range(max_iterations):
+        # Randomly sample mini-batches
+        if sound_embeddings.shape[0] > batch_size:
+            sound_batch_indices = np.random.choice(sound_embeddings.shape[0], batch_size, replace=False)
+            sound_batch = sound_embeddings[sound_batch_indices]
+        else:
+            sound_batch = sound_embeddings
+            sound_batch_indices = np.arange(sound_embeddings.shape[0])
+            
+        if text_embeddings.shape[0] > batch_size:
+            text_batch_indices = np.random.choice(text_embeddings.shape[0], batch_size, replace=False)
+            text_batch = text_embeddings[text_batch_indices]
+        else:
+            text_batch = text_embeddings
+            text_batch_indices = np.arange(text_embeddings.shape[0])
+        
+        # Step 1: Find nearest text embeddings for each sound embedding
+        mapped_sound = sound_batch @ W_S
+        
+        # For each mapped sound, find the nearest text embedding
+        nearest_text_indices = []
+        for i in range(mapped_sound.shape[0]):
+            distances = dist_fn(np.repeat(mapped_sound[i:i+1], text_batch.shape[0], axis=0), text_batch)
+            nearest_idx = np.argmin(distances)
+            nearest_text_indices.append(nearest_idx)
+            
+        nearest_text = text_batch[nearest_text_indices]
+        
+        # Step 2: Find nearest sound embeddings for each text embedding
+        mapped_text = text_batch @ W_T
+        
+        # For each mapped text, find the nearest sound embedding
+        nearest_sound_batch_indices = []
+        for i in range(mapped_text.shape[0]):
+            distances = dist_fn(np.repeat(mapped_text[i:i+1], sound_batch.shape[0], axis=0), sound_batch)
+            nearest_idx = np.argmin(distances)
+            nearest_sound_batch_indices.append(nearest_idx)
+            
+        nearest_sound = sound_batch[nearest_sound_batch_indices]
+        
+        # Step 3: Update transformation matrices
+        # Loss 1: Sound->Text transformation accuracy
+        gradient_W_S = 2 * (mapped_sound - nearest_text).T @ sound_batch
+        
+        # Loss 2: Text->Sound transformation accuracy
+        gradient_W_T = 2 * (mapped_text - nearest_sound).T @ text_batch
+        
+        # Loss 3: Cycle consistency (S->T->S should be close to S)
+        if cycle_weight > 0:
+            cycled_sound = (sound_batch @ W_S) @ W_T
+            cycle_loss_sound = cycled_sound - sound_batch
+            gradient_cycle_W_S = 2 * cycle_loss_sound.T @ (sound_batch @ W_T.T)
+            gradient_cycle_W_T = 2 * ((sound_batch @ W_S).T @ cycle_loss_sound)
+            
+            # Loss 4: Cycle consistency (T->S->T should be close to T)
+            cycled_text = (text_batch @ W_T) @ W_S
+            cycle_loss_text = cycled_text - text_batch
+            gradient_cycle_W_T += 2 * cycle_loss_text.T @ (text_batch @ W_S.T)
+            gradient_cycle_W_S += 2 * ((text_batch @ W_T).T @ cycle_loss_text)
+            
+            # Add cycle loss gradients
+            gradient_W_S += cycle_weight * gradient_cycle_W_S
+            gradient_W_T += cycle_weight * gradient_cycle_W_T
+        
+        # Update matrices
+        W_S -= learning_rate * gradient_W_S
+        W_T -= learning_rate * gradient_W_T
+        
+        # Optional: Orthogonalize the transformation matrices
+        # This can help stabilize learning and enforce that the transformation preserves the geometry
+        u_s, _, vh_s = np.linalg.svd(W_S, full_matrices=False)
+        W_S = u_s @ vh_s
+        
+        u_t, _, vh_t = np.linalg.svd(W_T, full_matrices=False)
+        W_T = u_t @ vh_t
+        
+        if iter_num % 10 == 0 or iter_num == max_iterations - 1:
+            # Calculate validation loss
+            mapped_text_all = text_embeddings @ W_T
+            mapped_sound_all = sound_embeddings @ W_S
+            
+            # Sample for validation to avoid memory issues
+            max_validation = min(1000, text_embeddings.shape[0], sound_embeddings.shape[0])
+            val_indices = np.random.choice(min(text_embeddings.shape[0], sound_embeddings.shape[0]), max_validation, replace=False)
+            
+            validation_loss = np.mean(dist_fn(mapped_text_all[val_indices], sound_embeddings[val_indices])) + \
+                              np.mean(dist_fn(mapped_sound_all[val_indices], text_embeddings[val_indices]))
+            
+            if cycle_weight > 0:
+                cycle_loss = np.mean(dist_fn(mapped_text_all[val_indices] @ W_S, text_embeddings[val_indices])) + \
+                             np.mean(dist_fn(mapped_sound_all[val_indices] @ W_T, sound_embeddings[val_indices]))
+                validation_loss += cycle_weight * cycle_loss
+                
+            print(f"Iteration {iter_num}: Validation Loss = {validation_loss:.4f}")
+    
+    # Apply final mapping to all text embeddings
+    mapped_text_embeddings = text_embeddings @ W_T
+    
+    # Find nearest sound to each mapped text embedding
+    _, nearest_sound_indices = find_nearest_neighbors(sound_embeddings, mapped_text_embeddings, distance_metric)
+    
+    return nearest_sound_indices
+
+
+def run(params, evaluator=None, cache=True, save_sound=False):
     sound_corpus_path = Path(params.sound_path)
     text_corpus_path = Path(params.text_path)
 
@@ -408,7 +552,7 @@ def run(params, evaluator=None, cache=True, save_output=False):
 
     mapping = params.mapping
     print(f"Mapping text to sound with method {mapping}...")
-    # mapping options: identity, cluster_map
+    # mapping options: identity, cluster_map, icp
     if mapping == "identity":
         neighbor_indices = identity(sound_embeddings, text_embeddings, params.distance_metric)
     elif mapping == "cluster":
@@ -417,6 +561,22 @@ def run(params, evaluator=None, cache=True, save_output=False):
             print("Ending this run.")
             return None
         neighbor_indices, (sound_cluster_labels, text_cluster_labels) = cluster_map(sound_embeddings, text_embeddings, params.distance_metric, k=params.k)
+    elif mapping == "icp":
+        # Get ICP-specific parameters if available
+        icp_iterations = getattr(params, "icp_iterations", 50)
+        batch_size = getattr(params, "batch_size", 32)
+        cycle_weight = getattr(params, "cycle_weight", 0.1)
+        learning_rate = getattr(params, "learning_rate", 0.01)
+        
+        neighbor_indices = icp_map(
+            sound_embeddings, 
+            text_embeddings, 
+            params.distance_metric,
+            max_iterations=icp_iterations,
+            batch_size=batch_size,
+            cycle_weight=cycle_weight,
+            learning_rate=learning_rate
+        )
     else:
         raise Exception("Invalid mapping provided")
 
@@ -429,20 +589,20 @@ def run(params, evaluator=None, cache=True, save_output=False):
     score = pairwise_distance(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
     print(f"Distance: {score}")
 
-    if save_output:
+    if save_sound:
         print("Fetching sounds...")
         output_sounds = [sound_corpus[i] for i in neighbor_indices]
 
         print("Saving output...")
         save_path = OUTPUT_PATH / f"{params.filename()}.wav"
-        save_output(output_sounds, save_path)
+        save_sound(output_sounds, save_path)
 
     print("Done.")
 
     # Save scores if evaluator is provided
     if evaluator:
-        scores = {"pairwise_score": score}
-
+        scores = {"pairwise_distance": score}
+        
         if params.mapping == "cluster":
             # First, evaluate individual spaces
             sound_eval = evaluate_clustering(sound_embeddings, sound_cluster_labels)
@@ -490,18 +650,18 @@ def run(params, evaluator=None, cache=True, save_output=False):
 if __name__ == "__main__":
 
     e = ParameterGenerator(
-        sound_path="./corpora/sound/toy",
+        sound_path="./corpora/sound/anonymous_corpus",
         text_path="./corpora/text/test.txt",
         sound_encoders=["MuQ"],
         text_encoders=["fastText"],
         mappings=["identity"],
         sound_preprocessings=['full'],
         normalizations=["standard"],
-        dims=[2, 10, 30],
-        distance_metrics=["euclidean", "cosine"],
+        dims=[5],
+        distance_metrics=["euclidean"],
         mapping_evaluations=["pairwise"]
     )
 
     parameter_list = e.create_params()
     for parameters in parameter_list:
-        scores = run(parameters, cache=False, save_output=True)
+        scores = run(parameters, cache=True, save_sound=True)

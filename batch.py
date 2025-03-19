@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from util import ParameterGenerator
 from main import run
-from eval import EvaluationFramework, analyze_results
+from eval import EvaluationFramework, analyze_experiments
 
 def run_comprehensive_evaluation(check_cache=True):
     # Initialize the evaluation framework
@@ -103,7 +103,7 @@ def run_comprehensive_evaluation(check_cache=True):
     print("Evaluation complete! Report generated.")
     
     # Analyze and visualize results
-    analyze_results(framework)
+    analyze_experiments()
     
     return report
 
