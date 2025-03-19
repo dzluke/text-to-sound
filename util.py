@@ -114,7 +114,8 @@ class ParameterGenerator:
         )
         params = []
         for sound_encoder, text_encoder, mapping, sound_preprocessing, normalization, dims, distance_metric in param_combinations:
-            if mapping == 'cluster' and hasattr(self, 'ks'):
+            if mapping == 'cluster':
+                assert hasattr(self, 'ks'), "ks must be provided for clustering evaluations"
                 for k in self.ks:
                     params.append(
                         Parameter(

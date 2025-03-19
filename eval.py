@@ -70,7 +70,8 @@ class EvaluationFramework:
             "sound_preprocessing": params.sound_preprocessing,
             "normalization": params.normalization,
             "dim": params.dim,
-            "distance_metric": params.distance_metric
+            "distance_metric": params.distance_metric,
+            "k": params.k if params.mapping == "cluster" else 0  # Set k to 0 for identity mapping
         }
         
         # Add all scores to the row
@@ -84,12 +85,12 @@ class EvaluationFramework:
         df.to_csv(self.results_file, index=False)
         
         # Save detailed results as JSON for this specific run
-        details_file = self.results_dir / f"{params.filename()}_details.json"
-        with open(details_file, "w") as f:
-            json.dump({
-                "parameters": params.to_string(),
-                "scores": scores
-            }, f, indent=2)
+        # details_file = self.results_dir / f"{params.filename()}_details.json"
+        # with open(details_file, "w") as f:
+        #     json.dump({
+        #         "parameters": params.to_string(),
+        #         "scores": scores
+        #     }, f, indent=2)
     
     def find_best_parameters(self, metric="pairwise_score", lower_is_better=True, 
                             sound_corpus=None, text_corpus=None):
@@ -286,3 +287,141 @@ class EvaluationFramework:
         if column in df.columns:
             return df[column].unique().tolist()
         return []
+
+def analyze_experiments(results_file="./evaluation_results/evaluation_results.csv"):
+    """
+    Analyze all experiments from the evaluation results file, calculate relevant metrics,
+    print the analysis, and generate plots.
+
+    Args:
+        results_file (str): Path to the evaluation results CSV file.
+        output_dir (str): Directory to save the generated plots.
+    """
+    # Load the results file
+    results_file = Path(results_file)
+    if not results_file.exists():
+        print(f"Results file not found: {results_file}")
+        return
+
+    df = pd.read_csv(results_file)
+
+    if df.empty:
+        print("No results to analyze.")
+        return    
+
+    print("\n" + "=" * 50)
+    print("ANALYSIS OF EVALUATION RESULTS")
+    print("=" * 50 + "\n")
+
+    # Focus on pairwise distance metrics
+    if "pairwise_score" in df.columns:
+        metric = "pairwise_score"
+    elif "pairwise_distance" in df.columns:
+        metric = "pairwise_distance"
+    else:
+        print("No pairwise distance/score metric found in results.")
+        return
+
+    print(f"AVERAGE {metric.upper()} BY MAPPING METHOD")
+    print("-" * 50)
+
+    # Analyze by mapping method
+    mapping_methods = df["mapping_method"].unique()
+    for mapping in mapping_methods:
+        mapping_rows = df[df["mapping_method"] == mapping]
+        values = mapping_rows[metric].dropna()
+
+        if not values.empty:
+            avg_score = values.mean()
+            print(f"Mapping: {mapping}")
+            print(f"  Average {metric}: {avg_score:.4f}")
+            print(f"  Number of experiments: {len(values)}")
+
+            # If cluster mapping, analyze metrics by k
+            if mapping == "cluster" and "k" in mapping_rows.columns:
+                print(f"\n  Metrics by k:")
+                for k in sorted(mapping_rows["k"].dropna().unique()):
+                    k_rows = mapping_rows[mapping_rows["k"] == k]
+                    print(f"    k={k}:")
+
+                    # Pairwise Distance
+                    pairwise_values = k_rows[metric].dropna()
+                    if not pairwise_values.empty:
+                        avg_pairwise = pairwise_values.mean()
+                        print(f"      Average Pairwise Distance (lower is better): {avg_pairwise:.4f}")
+                    else:
+                        print(f"      No valid pairwise distances found")
+
+                    # Silhouette Score
+                    silhouette_values = k_rows["sound_silhouette_score"].dropna()
+                    if not silhouette_values.empty:
+                        avg_silhouette = silhouette_values.mean()
+                        print(f"      Average Silhouette Score (higher is better): {avg_silhouette:.4f}")
+                    else:
+                        print(f"      No valid silhouette scores found")
+
+                    # Calinski-Harabasz Score
+                    ch_values = k_rows["sound_calinski_harabasz_score"].dropna()
+                    if not ch_values.empty:
+                        avg_ch = ch_values.mean()
+                        print(f"      Average Calinski-Harabasz Score (higher is better): {avg_ch:.4f}")
+                    else:
+                        print(f"      No valid Calinski-Harabasz scores found")
+
+                    # Davies-Bouldin Score
+                    db_values = k_rows["sound_davies_bouldin_score"].dropna()
+                    if not db_values.empty:
+                        avg_db = db_values.mean()
+                        print(f"      Average Davies-Bouldin Score (lower is better): {avg_db:.4f}")
+                    else:
+                        print(f"      No valid Davies-Bouldin scores found")
+                print()
+        else:
+            print(f"Mapping: {mapping}")
+            print(f"  No valid results found")
+            print()
+
+    print("Analysis complete.")
+
+
+def generate_plots(results_file="./evaluation_results/evaluation_results.csv", output_dir="./evaluation_results/plots"):
+    """
+    Generate plots from the evaluation results.
+
+    Args:
+        results_file (str): Path to the evaluation results CSV file.
+        output_dir (str): Directory to save the generated plots.
+    """
+    results_file = Path(results_file)
+    if not results_file.exists():
+        print(f"Results file not found: {results_file}")
+        return
+
+    df = pd.read_csv(results_file)
+
+    if df.empty:
+        print("No results to analyze.")
+        return
+    
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate plots
+    print("Generating plots...")
+    plot_parameters = ["mapping_method", "sound_encoder", "text_encoder", "dim", "k"]
+    metrics = ['pairwse_distance']
+    for param in plot_parameters:
+        if param in df.columns and len(df[param].unique()) > 1:
+            for metric in metrics:
+                plt.figure(figsize=(10, 6))
+                sns.boxplot(x=param, y=metric, data=df)
+                plt.title(f"Impact of {param} on {metric}")
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                plot_file = output_dir / f"{param}_impact_on_{metric}.png"
+                plt.savefig(plot_file)
+                plt.close()
+                print(f"Saved plot: {plot_file}")
+
+if __name__ == "__main__":
+    analyze_experiments()
