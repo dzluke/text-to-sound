@@ -586,8 +586,13 @@ def run(params, evaluator=None, cache=True, save_sound=False):
     elif params.distance_metric == "cosine":
         distance_fn = lambda x, y: distance.cosine(x, y)
 
-    score = pairwise_distance(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
-    print(f"Distance: {score}")
+    # Calculate pairwise distance
+    pairwise_dist = pairwise_distance(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
+    print(f"Pairwise Distance: {pairwise_dist}")
+    
+    # Calculate Wasserstein distance
+    wasserstein_dist = wasserstein_distance(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
+    print(f"Wasserstein Distance: {wasserstein_dist}")
 
     if save_sound:
         print("Fetching sounds...")
@@ -601,7 +606,10 @@ def run(params, evaluator=None, cache=True, save_sound=False):
 
     # Save scores if evaluator is provided
     if evaluator:
-        scores = {"pairwise_distance": score}
+        scores = {
+            "pairwise_distance": pairwise_dist,
+            "wasserstein_distance": wasserstein_dist
+        }
         
         if params.mapping == "cluster":
             # First, evaluate individual spaces

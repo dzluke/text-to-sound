@@ -15,25 +15,25 @@ def run_comprehensive_evaluation(check_cache=True):
     sound_corpora = [
         # "./corpora/sound/toy",
         "./corpora/sound/anonymous_corpus",
-        "./corpora/sound/mothman",
-        "./corpora/sound/TinySOL",
+        # "./corpora/sound/mothman",
+        # "./corpora/sound/TinySOL",
     ]
     
     text_corpora = [
-        "./corpora/text/test.txt",
+        # "./corpora/text/test.txt",
         # "./corpora/text/repeat.txt",
         "./corpora/text/longer.txt"
     ]
 
     sound_encoders = ["MuQ"]
-    text_encoders = ["fastText", "word2vec", "RoBERTa"]
+    text_encoders = ["fastText"]
     mappings = ["identity", "cluster"]
-    ks = [2, 10, 20]  # Different values of k for clustering
-    sound_preprocessings = ['full', 1000]
+    ks = [2, 10]  # Different values of k for clustering
+    sound_preprocessings = [2000]
     normalizations = ["standard"]
-    dims = [2, 5, 10]  # Different dimensions for embeddings]
+    dims = [2, 5]  # Different dimensions for embeddings]
     distance_metrics = ["euclidean"]
-    mapping_evaluations = ["pairwise"]    
+    mapping_evaluations = ["pairwise", 'wasserstein']  #this actually does nothing currently
 
     # For each corpus combination, run evaluations
     for sound_corpus in sound_corpora:
