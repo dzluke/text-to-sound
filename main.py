@@ -20,7 +20,7 @@ from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bo
 from scipy.spatial import distance
 from scipy.stats import wasserstein_distance as scipy_wasserstein
 
-from models import muq, RoBERTa, word2vec, fastText
+from models import muq, RoBERTa, word2vec, fastText, CLAP_text, CLAP_sound, load_CLAP
 from util import Parameter, ParameterGenerator, load_soundfiles, remove_silence, set_sampling_rate
 
 
@@ -274,6 +274,17 @@ def wasserstein_distance(t_embs, s_embs, distance_metric, num_samples=1000):
     # Compare the distributions using Wasserstein distance
     return scipy_wasserstein(text_distances, sound_distances)
 
+
+def CLAP_distance(texts, sound, distance_metric):
+    # first embed them
+    model, processor = load_CLAP()
+    t_embs = CLAP_text(texts, model, processor)
+    s_embs = CLAP_sound(sound, model, processor, SAMPLING_RATE)
+    # then calculate the distance between the two sets of embeddings
+    dist = pairwise_distance(t_embs, s_embs, distance_metric)
+    return dist  
+
+
 #####################
 # MAPPING FUNCTIONS #
 #####################
@@ -323,21 +334,32 @@ def cluster_map(sound_embeddings, text_embeddings, distance_metric, k):
     return nearest_sound_idx, (sound_cluster_labels, text_cluster_labels)  # return the cluster labels for evaluation purposes
 
 
-def icp_map(sound_embeddings, text_embeddings, distance_metric, max_iterations=50, batch_size=32, cycle_weight=0.1, learning_rate=0.01):
+def icp_map(
+    sound_embeddings,
+    text_embeddings,
+    distance_metric,
+    max_iterations=50,
+    batch_size=32,
+    cycle_weight=0.1,
+    learning_rate=0.01,
+    return_validation_loss=False
+):
     """
     Mini-Batch Cycle Iterative Closest Point (MBC-ICP) method for mapping between spaces.
     
     Args:
-        sound_embeddings (np.ndarray): Sound embeddings (S space)
-        text_embeddings (np.ndarray): Text embeddings (T space)
-        distance_metric (str): Distance metric to use
-        max_iterations (int): Maximum number of iterations
-        batch_size (int): Mini-batch size for optimization
-        cycle_weight (float): Weight for cycle consistency loss
-        learning_rate (float): Learning rate for optimization
+        sound_embeddings (np.ndarray): Sound embeddings (S space).
+        text_embeddings (np.ndarray): Text embeddings (T space).
+        distance_metric (str): Distance metric to use ("euclidean" or "cosine").
+        max_iterations (int): Maximum number of iterations.
+        batch_size (int): Mini-batch size for optimization.
+        cycle_weight (float): Weight for cycle consistency loss.
+        learning_rate (float): Learning rate for optimization.
+        return_validation_loss (bool): Whether to return validation loss over iterations.
         
     Returns:
-        tuple: (nearest_sound_indices, None)
+        np.ndarray: Transformed text embeddings after ICP.
+        list (optional): Validation loss over iterations (if return_validation_loss=True).
     """
     print(f"Applying ICP mapping with {max_iterations} iterations...")
     
@@ -362,6 +384,9 @@ def icp_map(sound_embeddings, text_embeddings, distance_metric, max_iterations=5
     if isinstance(text_embeddings, torch.Tensor):
         text_embeddings = text_embeddings.detach().numpy()
     
+    # Track validation loss over iterations
+    validation_losses = []
+
     # Main optimization loop
     for iter_num in range(max_iterations):
         # Randomly sample mini-batches
@@ -432,15 +457,14 @@ def icp_map(sound_embeddings, text_embeddings, distance_metric, max_iterations=5
         W_T -= learning_rate * gradient_W_T
         
         # Optional: Orthogonalize the transformation matrices
-        # This can help stabilize learning and enforce that the transformation preserves the geometry
         u_s, _, vh_s = np.linalg.svd(W_S, full_matrices=False)
         W_S = u_s @ vh_s
         
         u_t, _, vh_t = np.linalg.svd(W_T, full_matrices=False)
         W_T = u_t @ vh_t
         
+        # Calculate validation loss every 10 iterations or at the last iteration
         if iter_num % 10 == 0 or iter_num == max_iterations - 1:
-            # Calculate validation loss
             mapped_text_all = text_embeddings @ W_T
             mapped_sound_all = sound_embeddings @ W_S
             
@@ -455,16 +479,15 @@ def icp_map(sound_embeddings, text_embeddings, distance_metric, max_iterations=5
                 cycle_loss = np.mean(dist_fn(mapped_text_all[val_indices] @ W_S, text_embeddings[val_indices])) + \
                              np.mean(dist_fn(mapped_sound_all[val_indices] @ W_T, sound_embeddings[val_indices]))
                 validation_loss += cycle_weight * cycle_loss
-                
+            validation_losses.append(validation_loss)
             print(f"Iteration {iter_num}: Validation Loss = {validation_loss:.4f}")
     
     # Apply final mapping to all text embeddings
     mapped_text_embeddings = text_embeddings @ W_T
     
-    # Find nearest sound to each mapped text embedding
-    _, nearest_sound_indices = find_nearest_neighbors(sound_embeddings, mapped_text_embeddings, distance_metric)
-    
-    return nearest_sound_indices
+    if return_validation_loss:
+        return mapped_text_embeddings, validation_losses
+    return mapped_text_embeddings
 
 
 def run(params, evaluator=None, cache=True, save_sound=False):
@@ -586,6 +609,9 @@ def run(params, evaluator=None, cache=True, save_sound=False):
     elif params.distance_metric == "cosine":
         distance_fn = lambda x, y: distance.cosine(x, y)
 
+    print("Fetching sounds...")
+    output_sounds = [sound_corpus[i] for i in neighbor_indices]
+
     # Calculate pairwise distance
     pairwise_dist = pairwise_distance(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
     print(f"Pairwise Distance: {pairwise_dist}")
@@ -594,13 +620,14 @@ def run(params, evaluator=None, cache=True, save_sound=False):
     wasserstein_dist = wasserstein_distance(text_embeddings, sound_embeddings[neighbor_indices], distance_fn)
     print(f"Wasserstein Distance: {wasserstein_dist}")
 
-    if save_sound:
-        print("Fetching sounds...")
-        output_sounds = [sound_corpus[i] for i in neighbor_indices]
+    # Calculate CLAP pairwise distance
+    clap_dist = CLAP_distance(text_corpus, output_sounds, distance_fn)
+    print(f"CLAP Distance: {clap_dist}")
 
+    if save_sound:
         print("Saving output...")
         save_path = OUTPUT_PATH / f"{params.filename()}.wav"
-        save_sound(output_sounds, save_path)
+        save_output(output_sounds, save_path)
 
     print("Done.")
 
@@ -608,7 +635,8 @@ def run(params, evaluator=None, cache=True, save_sound=False):
     if evaluator:
         scores = {
             "pairwise_distance": pairwise_dist,
-            "wasserstein_distance": wasserstein_dist
+            "wasserstein_distance": wasserstein_dist,
+            "CLAP_distance": clap_dist  # Add CLAP distance to scores
         }
         
         if params.mapping == "cluster":

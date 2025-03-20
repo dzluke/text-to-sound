@@ -23,6 +23,7 @@ class EvaluationFramework:
                 "sound_corpus", "text_corpus", "sound_encoder", "text_encoder",
                 "mapping_method", "sound_preprocessing", "normalization",
                 "dim", "distance_metric", "pairwise_distance", "wasserstein_distance",
+                "CLAP_distance",  # Add CLAP distance column
                 # Sound cluster metrics
                 "sound_silhouette_score", "sound_calinski_harabasz_score", "sound_davies_bouldin_score",
                 # Text cluster metrics
@@ -50,16 +51,6 @@ class EvaluationFramework:
         sound_corpus = Path(params.sound_path).stem
         text_corpus = Path(params.text_path).stem
         
-        # Clean up metric names - extract only the metric name without the description
-        cleaned_scores = {}
-        for key, value in scores.items():
-            # Extract the base metric name if it has a description in parentheses
-            if ("(" in key):
-                base_key = key.split("(")[0].strip()
-                cleaned_scores[base_key] = value
-            else:
-                cleaned_scores[key] = value
-        
         # Create base row with parameters
         row = {
             "sound_corpus": sound_corpus,
@@ -75,22 +66,37 @@ class EvaluationFramework:
         }
         
         # Add all scores to the row
-        for key, value in cleaned_scores.items():
-            row[key] = value
+        row.update(scores)
         
-        # Add the new row
-        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        # Check if a matching row already exists
+        conditions = (
+            (df["sound_corpus"] == sound_corpus) &
+            (df["text_corpus"] == text_corpus) &
+            (df["sound_encoder"] == params.sound_encoder) &
+            (df["text_encoder"] == params.text_encoder) &
+            (df["mapping_method"] == params.mapping) &
+            (df["sound_preprocessing"] == params.sound_preprocessing) &
+            (df["normalization"] == params.normalization) &
+            (df["dim"] == params.dim) &
+            (df["distance_metric"] == params.distance_metric)
+        )
+        
+        if params.mapping == "cluster" and hasattr(params, "k"):
+            conditions &= (df["k"] == params.k)
+        
+        matching_rows = df[conditions]
+        
+        if not matching_rows.empty:
+            # Update the first matching row
+            index = matching_rows.index[0]
+            for key, value in row.items():
+                df.at[index, key] = value
+        else:
+            # Add the new row
+            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
         
         # Save the updated results
         df.to_csv(self.results_file, index=False)
-        
-        # Save detailed results as JSON for this specific run
-        # details_file = self.results_dir / f"{params.filename()}_details.json"
-        # with open(details_file, "w") as f:
-        #     json.dump({
-        #         "parameters": params.to_string(),
-        #         "scores": scores
-        #     }, f, indent=2)
     
     def find_best_parameters(self, metric="pairwise_distance", lower_is_better=True, 
                             sound_corpus=None, text_corpus=None):
@@ -333,16 +339,29 @@ def analyze_experiments(results_file="./evaluation_results/evaluation_results.cs
     else:
         print(f"\nAnalyzing all {len(df)} experiments (no filters applied)")
 
+    # Additional summary statistics
+    print("\nSUMMARY STATISTICS")
+    print("-" * 50)
+    
+    # Print unique values for key parameters
+    print("Parameter distribution in analyzed experiments:")
+    for param in ['sound_corpus', 'text_corpus', 'sound_encoder', 'text_encoder', 'dim', 'k']:
+        if param in df.columns:
+            unique_values = df[param].value_counts().to_dict()
+            print(f"  {param}: {unique_values}")
+
     print("\n" + "=" * 50)
     print("ANALYSIS OF EVALUATION RESULTS")
     print("=" * 50 + "\n")
 
-    # Analyze both pairwise and Wasserstein distance metrics
+    # Analyze both pairwise, Wasserstein, and CLAP distance metrics
     metrics = []
     if "pairwise_distance" in df.columns:
         metrics.append("pairwise_distance")
     if "wasserstein_distance" in df.columns:
         metrics.append("wasserstein_distance")
+    if "CLAP_distance" in df.columns:  # Include CLAP distance in analysis
+        metrics.append("CLAP_distance")
     
     if not metrics:
         print("No distance metrics found in results.")
@@ -372,7 +391,7 @@ def analyze_experiments(results_file="./evaluation_results/evaluation_results.cs
                         values = k_rows[metric].dropna()
                         if not values.empty:
                             avg = values.mean()
-                            print(f"    k={k}: {avg:.4f}")
+                            print(f"    k={k}: {avg:.4f}  count={len(values)}")
                     print()
             else:
                 print(f"Mapping: {mapping}")
@@ -407,108 +426,133 @@ def analyze_experiments(results_file="./evaluation_results/evaluation_results.cs
                     avg = values.mean()
                     print(f"k={k}: {avg:.4f}")
                     
-                    # Show by corpus if we have multiple
-                    if k_rows["sound_corpus"].nunique() > 1:
-                        print("  By sound corpus:")
-                        for corpus in k_rows["sound_corpus"].unique():
-                            corpus_rows = k_rows[k_rows["sound_corpus"] == corpus]
-                            corpus_avg = corpus_rows["combined_silhouette_score"].mean()
-                            print(f"    {corpus}: {corpus_avg:.4f}")
+                    # # Show by corpus if we have multiple
+                    # if k_rows["sound_corpus"].nunique() > 1:
+                    #     print("  By sound corpus:")
+                    #     for corpus in k_rows["sound_corpus"].unique():
+                    #         corpus_rows = k_rows[k_rows["sound_corpus"] == corpus]
+                    #         corpus_avg = corpus_rows["combined_silhouette_score"].mean()
+                    #         print(f"    {corpus}: {corpus_avg:.4f}")
             
         # Analyze domain silhouette scores
-        if "domain_silhouette_score" in cluster_df.columns:
-            print("\nDOMAIN SILHOUETTE SCORE BY K")
-            print("(Lower values are better - indicate better blending between domains)")
-            print("-" * 50)
+        # if "domain_silhouette_score" in cluster_df.columns:
+        #     print("\nDOMAIN SILHOUETTE SCORE BY K")
+        #     print("(Lower values are better - indicate better blending between domains)")
+        #     print("-" * 50)
             
-            for k in sorted(cluster_df["k"].dropna().unique()):
-                k_rows = cluster_df[cluster_df["k"] == k]
-                values = k_rows["domain_silhouette_score"].dropna()
-                if not values.empty:
-                    avg = values.mean()
-                    print(f"k={k}: {avg:.4f}")
+        #     for k in sorted(cluster_df["k"].dropna().unique()):
+        #         k_rows = cluster_df[cluster_df["k"] == k]
+        #         values = k_rows["domain_silhouette_score"].dropna()
+        #         if not values.empty:
+        #             avg = values.mean()
+        #             print(f"k={k}: {avg:.4f}")
                     
-                    # Interpretation guide
-                    if avg < -0.1:
-                        print("  Interpretation: Excellent domain blending (strong negative score)")
-                    elif avg < 0:
-                        print("  Interpretation: Good domain blending (negative score)")
-                    elif avg < 0.1:
-                        print("  Interpretation: Moderate domain blending (near zero)")
-                    else:
-                        print("  Interpretation: Poor domain separation (positive score)")
+        #             # Interpretation guide
+        #             if avg < -0.1:
+        #                 print("  Interpretation: Excellent domain blending (strong negative score)")
+        #             elif avg < 0:
+        #                 print("  Interpretation: Good domain blending (negative score)")
+        #             elif avg < 0.1:
+        #                 print("  Interpretation: Moderate domain blending (near zero)")
+        #             else:
+        #                 print("  Interpretation: Poor domain separation (positive score)")
                     
-                    # Show by corpus if we have multiple
-                    if k_rows["sound_corpus"].nunique() > 1:
-                        print("  By sound corpus:")
-                        for corpus in k_rows["sound_corpus"].unique():
-                            corpus_rows = k_rows[k_rows["sound_corpus"] == corpus]
-                            corpus_avg = corpus_rows["domain_silhouette_score"].mean()
-                            print(f"    {corpus}: {corpus_avg:.4f}")
+        #             # Show by corpus if we have multiple
+        #             if k_rows["sound_corpus"].nunique() > 1:
+        #                 print("  By sound corpus:")
+        #                 for corpus in k_rows["sound_corpus"].unique():
+        #                     corpus_rows = k_rows[k_rows["sound_corpus"] == corpus]
+        #                     corpus_avg = corpus_rows["domain_silhouette_score"].mean()
+        #                     print(f"    {corpus}: {corpus_avg:.4f}")
         
         # Compare sound and text clustering quality
-        if "sound_silhouette_score" in cluster_df.columns and "text_silhouette_score" in cluster_df.columns:
-            print("\nSOUND VS TEXT CLUSTERING QUALITY")
-            print("(Higher values indicate better-defined clusters in each domain)")
-            print("-" * 50)
+        # if "sound_silhouette_score" in cluster_df.columns and "text_silhouette_score" in cluster_df.columns:
+        #     print("\nSOUND VS TEXT CLUSTERING QUALITY")
+        #     print("(Higher values indicate better-defined clusters in each domain)")
+        #     print("-" * 50)
             
-            sound_avg = cluster_df["sound_silhouette_score"].dropna().mean()
-            text_avg = cluster_df["text_silhouette_score"].dropna().mean()
+        #     sound_avg = cluster_df["sound_silhouette_score"].dropna().mean()
+        #     text_avg = cluster_df["text_silhouette_score"].dropna().mean()
             
-            print(f"Average sound silhouette score: {sound_avg:.4f}")
-            print(f"Average text silhouette score: {text_avg:.4f}")
+        #     print(f"Average sound silhouette score: {sound_avg:.4f}")
+        #     print(f"Average text silhouette score: {text_avg:.4f}")
             
-            if sound_avg > text_avg:
-                diff = sound_avg - text_avg
-                print(f"Sound clusters are better defined by {diff:.4f}")
-            elif text_avg > sound_avg:
-                diff = text_avg - sound_avg
-                print(f"Text clusters are better defined by {diff:.4f}")
-            else:
-                print("Sound and text clusters are equally well-defined")
+        #     if sound_avg > text_avg:
+        #         diff = sound_avg - text_avg
+        #         print(f"Sound clusters are better defined by {diff:.4f}")
+        #     elif text_avg > sound_avg:
+        #         diff = text_avg - sound_avg
+        #         print(f"Text clusters are better defined by {diff:.4f}")
+        #     else:
+        #         print("Sound and text clusters are equally well-defined")
             
-            print("\nBy k value:")
-            for k in sorted(cluster_df["k"].dropna().unique()):
-                k_rows = cluster_df[cluster_df["k"] == k]
-                sound_k_avg = k_rows["sound_silhouette_score"].dropna().mean()
-                text_k_avg = k_rows["text_silhouette_score"].dropna().mean()
-                print(f"  k={k}:")
-                print(f"    Sound: {sound_k_avg:.4f}, Text: {text_k_avg:.4f}")
+        #     print("\nBy k value:")
+        #     for k in sorted(cluster_df["k"].dropna().unique()):
+        #         k_rows = cluster_df[cluster_df["k"] == k]
+        #         sound_k_avg = k_rows["sound_silhouette_score"].dropna().mean()
+        #         text_k_avg = k_rows["text_silhouette_score"].dropna().mean()
+        #         print(f"  k={k}:")
+        #         print(f"    Sound: {sound_k_avg:.4f}, Text: {text_k_avg:.4f}")
     
-    # Additional summary statistics
-    print("\nSUMMARY STATISTICS")
-    print("-" * 50)
-    
-    # Print unique values for key parameters
-    print("Parameter distribution in analyzed experiments:")
-    for param in ['sound_corpus', 'text_corpus', 'sound_encoder', 'text_encoder', 'dim']:
-        if param in df.columns:
-            unique_values = df[param].value_counts().to_dict()
-            print(f"  {param}: {unique_values}")
     
     # Print best overall results for each metric
-    for metric in metrics:
-        print(f"\nBest {metric} results:")
-        best_idx = df[metric].idxmin()  # Lower is better for both pairwise and Wasserstein
-        if pd.notna(best_idx):
-            best_row = df.loc[best_idx]
-            print(f"  Best {metric}: {best_row[metric]:.4f}")
-            for param in ['sound_corpus', 'text_corpus', 'sound_encoder', 'text_encoder', 
-                        'mapping_method', 'dim', 'k']:
-                if param in best_row and pd.notna(best_row[param]):
-                    print(f"    {param}: {best_row[param]}")
+    # for metric in metrics:
+    #     print(f"\nBest {metric} results:")
+    #     best_idx = df[metric].idxmin()  # Lower is better for both pairwise and Wasserstein
+    #     if pd.notna(best_idx):
+    #         best_row = df.loc[best_idx]
+    #         print(f"  Best {metric}: {best_row[metric]:.4f}")
+    #         for param in ['sound_corpus', 'text_corpus', 'sound_encoder', 'text_encoder', 
+    #                     'mapping_method', 'dim', 'k']:
+    #             if param in best_row and pd.notna(best_row[param]):
+    #                 print(f"    {param}: {best_row[param]}")
+
+    # Analyze clustering metrics if present
+    clustering_metrics = [
+        "combined_silhouette_score", "combined_calinski_harabasz_score",
+        "combined_davies_bouldin_score"
+    ]
+    
+    # Check if we have clustering metrics in the results
+    has_clustering_metrics = any(metric in df.columns for metric in clustering_metrics)
+    
+    if has_clustering_metrics:
+        print("\nPEARSON'S CORRELATION ANALYSIS")
+        print("-" * 50)
+        
+        for mapping_metric in metrics:  # Include CLAP_distance in correlation analysis
+            for clustering_metric in clustering_metrics:
+                if clustering_metric in df.columns:
+                    # Drop rows with NaN values for the selected metrics
+                    valid_rows = df[[mapping_metric, clustering_metric]].dropna()
+                    if not valid_rows.empty:
+                        correlation = valid_rows[mapping_metric].corr(valid_rows[clustering_metric])
+                        print(f"Pearson's correlation between {mapping_metric} and {clustering_metric}: {correlation:.4f}")
+                    else:
+                        print(f"Not enough data to calculate correlation between {mapping_metric} and {clustering_metric}.")
+            print('\n')
 
     print("\nAnalysis complete.")
-    
     return df  # Return the filtered dataframe for further analysis if needed
+    
 
-def generate_plots(results_file="./evaluation_results/evaluation_results.csv", output_dir="./evaluation_results/plots"):
+def generate_plots(results_file="./evaluation_results/evaluation_results.csv", 
+                   output_dir="./evaluation_results/plots", 
+                   filter_params=None,
+                   clustering_metrics=None,
+                   mapping_metrics=None):
     """
-    Generate plots from the evaluation results.
+    Generate plots from the evaluation results with optional filtering.
 
     Args:
         results_file (str): Path to the evaluation results CSV file.
         output_dir (str): Directory to save the generated plots.
+        filter_params (dict, optional): Dictionary of parameters to filter by.
+            Example: {'sound_corpus': 'mothman', 'dim': [2, 5], 'mapping_method': 'cluster'}
+        clustering_metrics (list or str, optional): Specific clustering metrics to analyze.
+            If None, defaults to ['combined_silhouette_score']
+        mapping_metrics (list or str, optional): Specific mapping metrics to analyze.
+            If None, defaults to ['pairwise_distance']
     """
     results_file = Path(results_file)
     if not results_file.exists():
@@ -521,112 +565,123 @@ def generate_plots(results_file="./evaluation_results/evaluation_results.csv", o
         print("No results to analyze.")
         return
     
+    # Apply filters if provided
+    if filter_params:
+        print("\n" + "="*50)
+        print(f"FILTERED PLOT GENERATION - Using the following filters:")
+        for param, values in filter_params.items():
+            if isinstance(values, list):
+                print(f"  * {param}: {values}")
+            else:
+                print(f"  * {param}: {values}")
+        print("="*50)
+        
+        filtered_df = df.copy()
+        
+        for param, values in filter_params.items():
+            if param in filtered_df.columns:
+                # Handle both single values and lists of values
+                if isinstance(values, list):
+                    filtered_df = filtered_df[filtered_df[param].isin(values)]
+                else:
+                    filtered_df = filtered_df[filtered_df[param] == values]
+        
+        # Check if we have any results after filtering
+        if filtered_df.empty:
+            print(f"No results match the filter criteria")
+            return
+            
+        print(f"\nGenerating plots for {len(filtered_df)} experiments matching the filter criteria")
+        df = filtered_df
+    else:
+        print(f"\nGenerating plots for all {len(df)} experiments (no filters applied)")
+    
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Generate plots
-    print("Generating plots...")
-    plot_parameters = ["mapping_method", "sound_encoder", "text_encoder", "dim", "k"]
-    
-    # Include all relevant metrics
-    metrics = [
-        'pairwise_distance', 'wasserstein_distance',
-        'sound_silhouette_score', 'text_silhouette_score',
-        'combined_silhouette_score', 'domain_silhouette_score'
-    ]
+    # Set default metrics if none provided
+    if clustering_metrics is None:
+        clustering_metrics = ['combined_silhouette_score']
+    elif isinstance(clustering_metrics, str):
+        clustering_metrics = [clustering_metrics]
+        
+    if mapping_metrics is None:
+        mapping_metrics = ['pairwise_distance']
+    elif isinstance(mapping_metrics, str):
+        mapping_metrics = [mapping_metrics]
     
     # Filter to only metrics that exist in the dataframe
-    metrics = [m for m in metrics if m in df.columns]
+    clustering_metrics = [m for m in clustering_metrics if m in df.columns]
+    mapping_metrics = [m for m in mapping_metrics if m in df.columns]
     
-    # Create standard parameter impact plots
-    for param in plot_parameters:
-        if param in df.columns and len(df[param].unique()) > 1:
-            for metric in metrics:
-                if metric in df.columns:
-                    plt.figure(figsize=(10, 6))
-                    sns.boxplot(x=param, y=metric, data=df)
-                    plt.title(f"Impact of {param} on {metric}")
-                    plt.xticks(rotation=45)
-                    plt.tight_layout()
-                    plot_file = output_dir / f"{param}_impact_on_{metric}.png"
-                    plt.savefig(plot_file)
-                    plt.close()
-                    print(f"Saved plot: {plot_file}")
+    if not clustering_metrics:
+        print("No specified clustering metrics found in results.")
+    if not mapping_metrics:
+        print("No specified mapping metrics found in results.")
     
-    # Create specialized plots for clustering metrics
-    if 'combined_silhouette_score' in df.columns and 'domain_silhouette_score' in df.columns:
-        # Only include clustering experiments
-        cluster_df = df[df['mapping_method'] == 'cluster'].copy()
-        
-        if not cluster_df.empty:
-            # Plot relationship between combined silhouette and domain silhouette
-            plt.figure(figsize=(10, 6))
-            sns.scatterplot(
-                x='combined_silhouette_score', 
-                y='domain_silhouette_score', 
-                hue='k' if 'k' in cluster_df.columns else None,
-                size='dim' if 'dim' in cluster_df.columns else None,
-                data=cluster_df
-            )
-            plt.title("Domain Blending vs. Cluster Quality")
-            plt.xlabel("Combined Silhouette Score (higher = better clusters)")
-            plt.ylabel("Domain Silhouette Score (lower = better blending)")
-            plt.tight_layout()
-            plot_file = output_dir / "domain_vs_combined_silhouette.png"
-            plt.savefig(plot_file)
-            plt.close()
-            print(f"Saved plot: {plot_file}")
-            
-            # Plot relationship between distance metrics and clustering quality
-            if 'pairwise_distance' in cluster_df.columns and 'combined_silhouette_score' in cluster_df.columns:
+    if not clustering_metrics or not mapping_metrics:
+        return
+    
+    print(f"Analyzing clustering metrics: {', '.join(clustering_metrics)}")
+    print(f"Analyzing mapping metrics: {', '.join(mapping_metrics)}")
+    
+    # Generate plots
+    print("\nGenerating plots...")
+    plot_parameters = ["mapping_method", "sound_encoder", "text_encoder", "dim", "k"]
+    
+    # Generate plots for mapping evaluation scores vs. sound preprocessing
+    if "sound_preprocessing" in df.columns:
+        for metric in mapping_metrics:
+            if metric in df.columns:
                 plt.figure(figsize=(10, 6))
-                sns.scatterplot(
-                    x='pairwise_distance', 
-                    y='combined_silhouette_score', 
-                    hue='k' if 'k' in cluster_df.columns else None,
-                    size='dim' if 'dim' in cluster_df.columns else None,
-                    data=cluster_df
-                )
-                plt.title("Relationship Between Pairwise Distance and Cluster Quality")
-                plt.xlabel("Pairwise Distance (lower = better mapping)")
-                plt.ylabel("Combined Silhouette Score (higher = better clusters)")
+                # Sort data by the x-axis label
+                sorted_df = df.sort_values(by="sound_preprocessing")
+                sns.boxplot(x="sound_preprocessing", y=metric, data=sorted_df)
+                plt.title(f"Effect of Sound Preprocessing on {metric} (lower is better)")
+                plt.xticks(rotation=45)
                 plt.tight_layout()
-                plot_file = output_dir / "pairwise_vs_silhouette.png"
-                plt.savefig(plot_file)
-                plt.close()
-                print(f"Saved plot: {plot_file}")
-            
-            # Compare sound and text clustering quality
-            if 'sound_silhouette_score' in cluster_df.columns and 'text_silhouette_score' in cluster_df.columns:
-                plt.figure(figsize=(10, 6))
-                
-                # Create a temporary melted dataframe for this plot
-                plot_data = cluster_df[['sound_corpus', 'k', 'sound_silhouette_score', 'text_silhouette_score']].copy()
-                plot_data = pd.melt(
-                    plot_data, 
-                    id_vars=['sound_corpus', 'k'], 
-                    value_vars=['sound_silhouette_score', 'text_silhouette_score'],
-                    var_name='domain',
-                    value_name='silhouette_score'
-                )
-                
-                # Create the grouped bar chart
-                sns.barplot(
-                    x='k', 
-                    y='silhouette_score', 
-                    hue='domain',
-                    data=plot_data
-                )
-                plt.title("Sound vs Text Clustering Quality by k")
-                plt.xlabel("Number of Clusters (k)")
-                plt.ylabel("Silhouette Score (higher = better clusters)")
-                plt.tight_layout()
-                plot_file = output_dir / "sound_vs_text_clustering.png"
+                plot_file = output_dir / f"sound_preprocessing_effect_on_{metric}.png"
                 plt.savefig(plot_file)
                 plt.close()
                 print(f"Saved plot: {plot_file}")
 
+    # Generate plots for mapping evaluation scores vs. dim
+    if "dim" in df.columns:
+        for metric in mapping_metrics:
+            if metric in df.columns:
+                plt.figure(figsize=(10, 6))
+                # Sort data by the x-axis label
+                sorted_df = df.sort_values(by="dim")
+                sns.boxplot(x="dim", y=metric, data=sorted_df)
+                plt.title(f"Effect of Dimensionality (dim) on {metric} (lower is better)")
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                plot_file = output_dir / f"dim_effect_on_{metric}.png"
+                plt.savefig(plot_file)
+                plt.close()
+                print(f"Saved plot: {plot_file}")
+    
+    print("\nPlot generation complete!")
+    return df  # Return the filtered dataframe for further analysis if needed
+
 if __name__ == "__main__":
-    filter = {'sound_corpus': 'mothman', 'k': [2], 'mapping_method': 'cluster'}
-    filter = None
-    analyze_experiments(filter_params=filter)
+    e = EvaluationFramework()
+    # Example usage with filter:
+    filter_params = None  # No filter
+    filter_params = {'distance_metric':'euclidean'}
+
+    analyze_experiments(filter_params=filter_params)
+
+    pwd = 'pairwise_distance'
+    wsd = 'wasserstein_distance'
+    cm = ['combined_silhouette_score', 'combined_calinski_harabasz_score', 'combined_davies_bouldin_score']
+    
+    # Generate plots with specific metrics
+    # generate_plots(
+    #     filter_params=filter_params,
+    #     clustering_metrics=None,
+    #     mapping_metrics=[pwd]
+    # )
+    
+    
+    # e.generate_report()  # writes to evaluation_results/evaluation_report.json

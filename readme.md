@@ -1,5 +1,20 @@
 # Unsupervised Text-to-Sound Mapping
 
+## Results
+
+For euclidean distance metric:
+
+As clustering improves, pairwise distance decreases, as shown by the Pearson coefficients:
+- combined_silhouette_score: 0.0931 (weak positive correlation) (bad: better clustering correlates with worse mapping)
+- combined_calinski_harabasz_score: -0.4150 (moderate negative correlation)
+- combined_davies_bouldin_score: 0.0227 (weak positive correlation) (good: lower DB score correlates with better mapping)
+
+Correlations with k=2 with wasserstein_distance:
+- combined_silhouette_score: -0.9763 (strong negative correlation) (good: better clustering correlates with better mapping)
+- combined_calinski_harabasz_score: -0.9996 (strong negative correlation)
+- combined_davies_bouldin_score: 0.8378 (strong positive correlation) (good: lower DB score correlates with better mapping)
+
+
 The task: Create an artistic/creative tool that can generate mappings between words and sounds. 
 I type a sentence, this sentence is represented musically, where each word becomes one sound. 
 The evaluation is not that ‘red’ maps to a certain sound that relates to the concept of ‘red’, 
@@ -286,6 +301,9 @@ These can be used for evaluation
 # Install instructions
 ## Windows
 ```
+conda install conda-forge::transformers
+
+# install fastText for Windows
 pip install fasttext-wheel
 mkdir fastText
 cd fastText

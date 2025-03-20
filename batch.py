@@ -15,24 +15,27 @@ def run_comprehensive_evaluation(check_cache=True):
     sound_corpora = [
         # "./corpora/sound/toy",
         "./corpora/sound/anonymous_corpus",
-        # "./corpora/sound/mothman",
-        # "./corpora/sound/TinySOL",
+        "./corpora/sound/mothman",
+        "./corpora/sound/TinySOL",
+        "./corpora/sound/pres",
+        "./corpora/sound/targets",
+        "./corpora/sound/choir",
     ]
     
     text_corpora = [
-        # "./corpora/text/test.txt",
-        # "./corpora/text/repeat.txt",
+        "./corpora/text/test.txt",
+        "./corpora/text/repeat.txt",
         "./corpora/text/longer.txt"
     ]
 
     sound_encoders = ["MuQ"]
-    text_encoders = ["fastText"]
+    text_encoders = ["fastText", "word2vec", "RoBERTa"]  # Added RoBERTa for text encoding
     mappings = ["identity", "cluster"]
-    ks = [2, 10]  # Different values of k for clustering
-    sound_preprocessings = [2000]
+    ks = [3]  # Different values of k for clustering
+    sound_preprocessings = ["full", 1000]
     normalizations = ["standard"]
-    dims = [2, 5]  # Different dimensions for embeddings]
-    distance_metrics = ["euclidean"]
+    dims = [2, 5, 10, 20]  # Different dimensions for embeddings]
+    distance_metrics = ["euclidean", "cosine"]
     mapping_evaluations = ["pairwise", 'wasserstein']  #this actually does nothing currently
 
     # For each corpus combination, run evaluations
@@ -76,26 +79,19 @@ def run_comprehensive_evaluation(check_cache=True):
                         (existing_results['sound_preprocessing'] == parameters.sound_preprocessing) &
                         (existing_results['normalization'] == parameters.normalization) &
                         (existing_results['dim'] == parameters.dim) &
-                        (existing_results['distance_metric'] == parameters.distance_metric)
+                        (existing_results['distance_metric'] == parameters.distance_metric) &
+                        (~existing_results['CLAP_distance'].isna())  # Ensure CLAP_distance is not NaN
                     )
                     
                     # For cluster mapping, also check k value
                     if parameters.mapping == 'cluster' and hasattr(parameters, 'k'):
-                        # First ensure there's a k column in the dataframe
                         if 'k' in existing_results.columns:
                             conditions = conditions & (existing_results['k'] == parameters.k)
-                        else:
-                            # If k column doesn't exist, this experiment hasn't been run
-                            pass
                     
-                    # Check if ANY row matches all conditions (exact match)
                     if conditions.any():
-                        # matching_experiments = existing_results[conditions]
-                        # print(f"Skipping previously run experiment with parameters: {parameters.to_string()}")
                         print(f"Skipping previously run experiment")
                         continue
                 
-                # print(f"Running with parameters: {parameters.to_string()}")
                 run(parameters, cache=True, evaluator=framework)
     
     # Generate a report of all evaluations

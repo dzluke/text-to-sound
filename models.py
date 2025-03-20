@@ -1,12 +1,13 @@
 import torch
 import numpy as np
-from scipy.signal import resample_poly
 from muq import MuQ
 from transformers import AutoTokenizer, RobertaModel
 import gensim.downloader as api
 import fasttext
 from librosa import resample
+from transformers import ClapModel, ClapProcessor
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def muq(wavs, sr):
     """
@@ -77,9 +78,9 @@ def muq(wavs, sr):
 
 def RoBERTa(text):
     tokenizer = AutoTokenizer.from_pretrained("FacebookAI/roberta-base")
-    model = RobertaModel.from_pretrained("FacebookAI/roberta-base")
+    model = RobertaModel.from_pretrained("FacebookAI/roberta-base").to(device)
 
-    inputs = tokenizer(text, return_tensors="pt", max_length=512, padding=True, truncation=True, stride=50)
+    inputs = tokenizer(text, return_tensors="pt", max_length=512, padding=True, truncation=True, stride=50).to(device)
     tokens = inputs.encodings[0].tokens
     outputs = model(**inputs)
     print("RoBERTa: number of tokens: ", len(tokens))
@@ -88,7 +89,7 @@ def RoBERTa(text):
     # remove outputs from the start of sequence and end of sequence tokens
     last_hidden_states = last_hidden_states.squeeze()
     last_hidden_states = last_hidden_states[1:last_hidden_states.shape[0]-1]
-    return last_hidden_states.detach()
+    return last_hidden_states.detach().cpu()
 
 
 def fastText(text):
@@ -117,3 +118,29 @@ def word2vec(text):
     vecs = np.stack(vecs)
     print("word2vec shape: ", vecs.shape)
     return torch.from_numpy(vecs)
+
+
+def load_CLAP():
+    # Load the CLAP model and processor
+    model = ClapModel.from_pretrained("laion/clap-htsat-fused").to(device)
+    processor = ClapProcessor.from_pretrained("laion/clap-htsat-fused")
+    return model, processor
+
+def CLAP_sound(wavs, model, processor, sr):
+    target_sr = 48000
+    if sr != target_sr:
+        wavs = [resample(wav, orig_sr=sr, target_sr=target_sr) for wav in wavs]
+        sr = target_sr
+    inputs = processor(audios=wavs, return_tensors="pt", sampling_rate=sr).to(device)
+    audio_embed = model.get_audio_features(**inputs)
+    return audio_embed.detach().cpu()
+
+def CLAP_text(text, model, processor):
+    # text should be a list of words
+    inputs = processor(text=text, return_tensors="pt", padding=True, truncation=True).to(device)
+    text_embeddings = model.get_text_features(**inputs)
+    return text_embeddings.detach().cpu()
+
+
+# m, p = load_CLAP()
+# print(CLAP_text(['this', 'is', 'a', 'test'], m, p).shape)
