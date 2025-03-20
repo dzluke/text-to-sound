@@ -29,14 +29,14 @@ def run_comprehensive_evaluation(check_cache=True):
     ]
 
     sound_encoders = ["MuQ"]
-    text_encoders = ["fastText", "word2vec", "RoBERTa"]  # Added RoBERTa for text encoding
-    mappings = ["identity", "cluster"]
-    ks = [3]  # Different values of k for clustering
-    sound_preprocessings = ["full", 1000]
+    text_encoders = ["fastText"]  # Added RoBERTa for text encoding
+    mappings = ["identity", "cluster", "icp"]
+    ks = [2, 5, 10, 20, 30]  # Different values of k for clustering
+    sound_preprocessings = ["full", 1000, 500]
     normalizations = ["standard"]
     dims = [2, 5, 10, 20]  # Different dimensions for embeddings]
     distance_metrics = ["euclidean", "cosine"]
-    mapping_evaluations = ["pairwise", 'wasserstein']  #this actually does nothing currently
+    mapping_evaluations = ["pairwise", 'wasserstein', 'CLAP']  #this actually does nothing currently
 
     # For each corpus combination, run evaluations
     for sound_corpus in sound_corpora:

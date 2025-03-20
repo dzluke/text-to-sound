@@ -123,9 +123,10 @@ def save_output(sound_list, filename):
 
     OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
     counter = 1
-    while (filename).exists():
+    if filename.exists():
+        while Path(f"{filename.stem}_{counter}{filename.suffix}").exists():
+            counter += 1
         filename = filename.parent / f"{filename.stem}_{counter}{filename.suffix}"
-        counter += 1
 
     sf.write(filename, output, SAMPLING_RATE)
 
@@ -145,7 +146,8 @@ def equal_slices(sound, grain_size):
 
 def get_onsets(y):
     # Detect onsets
-    onset_samples = librosa.onset.onset_detect(y=y, sr=SAMPLING_RATE, units='samples')
+    inter_onset_time = 10  # min number of frames between onsets
+    onset_samples = librosa.onset.onset_detect(y=y, sr=SAMPLING_RATE, units='samples', backtrack=True, wait=inter_onset_time)
 
     # Split audio at onsets
     segments = []
@@ -484,10 +486,12 @@ def icp_map(
     
     # Apply final mapping to all text embeddings
     mapped_text_embeddings = text_embeddings @ W_T
-    
+
+    _, neighbor_indices = find_nearest_neighbors(sound_embeddings, mapped_text_embeddings, distance_metric)
+
     if return_validation_loss:
-        return mapped_text_embeddings, validation_losses
-    return mapped_text_embeddings
+        return neighbor_indices, validation_losses
+    return neighbor_indices
 
 
 def run(params, evaluator=None, cache=True, save_sound=False):
@@ -585,11 +589,23 @@ def run(params, evaluator=None, cache=True, save_sound=False):
             return None
         neighbor_indices, (sound_cluster_labels, text_cluster_labels) = cluster_map(sound_embeddings, text_embeddings, params.distance_metric, k=params.k)
     elif mapping == "icp":
-        # Get ICP-specific parameters if available
-        icp_iterations = getattr(params, "icp_iterations", 50)
-        batch_size = getattr(params, "batch_size", 32)
-        cycle_weight = getattr(params, "cycle_weight", 0.1)
-        learning_rate = getattr(params, "learning_rate", 0.01)
+        # Set ICP-specific parameters 
+        # toy
+        # icp_iterations = 50
+        # batch_size = 16
+        # cycle_weight = 0.5
+        # learning_rate = 0.01
+        # # anonymous_corpus
+        # icp_iterations = 100
+        # batch_size = 16
+        # cycle_weight = 0.7
+        # learning_rate = 0.001
+        # best for TinySOL
+        icp_iterations = 75
+        batch_size = 16
+        cycle_weight = 0.7
+        learning_rate = 0.001
+        
         
         neighbor_indices = icp_map(
             sound_embeddings, 
@@ -686,16 +702,17 @@ def run(params, evaluator=None, cache=True, save_sound=False):
 if __name__ == "__main__":
 
     e = ParameterGenerator(
-        sound_path="./corpora/sound/anonymous_corpus",
-        text_path="./corpora/text/test.txt",
+        sound_path="./corpora/sound/targets",
+        text_path="./corpora/text/pound.txt",
         sound_encoders=["MuQ"],
         text_encoders=["fastText"],
-        mappings=["identity"],
-        sound_preprocessings=['full'],
+        mappings=["identity", "cluster", "icp"],
+        sound_preprocessings=['onsets'],
         normalizations=["standard"],
         dims=[5],
         distance_metrics=["euclidean"],
-        mapping_evaluations=["pairwise"]
+        mapping_evaluations=["pairwise"],
+        ks=[3]  # Different values of k for clustering
     )
 
     parameter_list = e.create_params()
