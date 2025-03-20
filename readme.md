@@ -1,5 +1,9 @@
 # Unsupervised Text-to-Sound Mapping
 
+# Paper
+
+Should have a robust future work section
+
 ## Results
 
 For euclidean distance metric:
@@ -35,6 +39,8 @@ The input to the system is a word or string of words. The output is a sound. The
 or determined by the user. Each word leads to one sound. 
 
 The mapping is unsupervised, but pre-trained supervised methods can be used in the system.
+
+# Experiments
 
 ## Next steps
 - [x] Sound corpus input: slice into chunks/grains and add option to remove silence
