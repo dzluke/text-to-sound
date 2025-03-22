@@ -68,32 +68,35 @@ class EvaluationFramework:
         # Add all scores to the row
         row.update(scores)
         
-        # Check if a matching row already exists
-        conditions = (
-            (df["sound_corpus"] == sound_corpus) &
-            (df["text_corpus"] == text_corpus) &
-            (df["sound_encoder"] == params.sound_encoder) &
-            (df["text_encoder"] == params.text_encoder) &
-            (df["mapping_method"] == params.mapping) &
-            (df["sound_preprocessing"] == params.sound_preprocessing) &
-            (df["normalization"] == params.normalization) &
-            (df["dim"] == params.dim) &
-            (df["distance_metric"] == params.distance_metric)
-        )
+        # # Check if a matching row already exists
+        # conditions = (
+        #     (df["sound_corpus"] == sound_corpus) &
+        #     (df["text_corpus"] == text_corpus) &
+        #     (df["sound_encoder"] == params.sound_encoder) &
+        #     (df["text_encoder"] == params.text_encoder) &
+        #     (df["mapping_method"] == params.mapping) &
+        #     (df["sound_preprocessing"] == params.sound_preprocessing) &
+        #     (df["normalization"] == params.normalization) &
+        #     (df["dim"] == params.dim) &
+        #     (df["distance_metric"] == params.distance_metric)
+        # )
         
-        if params.mapping == "cluster" and hasattr(params, "k"):
-            conditions &= (df["k"] == params.k)
+        # if params.mapping == "cluster" and hasattr(params, "k"):
+        #     conditions &= (df["k"] == params.k)
         
-        matching_rows = df[conditions]
+        # matching_rows = df[conditions]
         
-        if not matching_rows.empty:
-            # Update the first matching row
-            index = matching_rows.index[0]
-            for key, value in row.items():
-                df.at[index, key] = value
-        else:
-            # Add the new row
-            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        # if not matching_rows.empty:
+        #     # Update the first matching row
+        #     index = matching_rows.index[0]
+        #     for key, value in row.items():
+        #         df.at[index, key] = value
+        # else:
+        #     # Add the new row
+        #     df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+
+         # Add the new row
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
         
         # Save the updated results
         df.to_csv(self.results_file, index=False)
@@ -282,15 +285,14 @@ class EvaluationFramework:
             return df[column].unique().tolist()
         return []
 
-def analyze_experiments(results_file="./evaluation_results/evaluation_results.csv", filter_params=None):
+def analyze_experiments(results_file="./evaluation_results/evaluation_results.csv", filter_params=None, compare_param=None):
     """
-    Analyze experiments from the evaluation results file, with optional filtering by parameters.
+    Analyze experiments from the evaluation results file, with optional filtering by parameters and comparison of a specific parameter.
 
     Args:
         results_file (str): Path to the evaluation results CSV file.
         filter_params (dict, optional): Dictionary of parameters to filter by.
-            Example: {'sound_corpus': 'mothman', 'dim': [2, 5], 'mapping_method': 'cluster'}
-            If None, all experiments are analyzed.
+        compare_param (str, optional): Parameter to compare results for (e.g., 'dim', 'k', 'sound_preprocessing').
     """
     # Load the results file
     results_file = Path(results_file)
@@ -397,6 +399,19 @@ def analyze_experiments(results_file="./evaluation_results/evaluation_results.cs
                 print(f"Mapping: {mapping}")
                 print(f"  No valid {metric} results found")
                 print()
+
+    if compare_param and compare_param in df.columns:
+        print(f"\nCOMPARISON OF RESULTS BY '{compare_param}'")
+        print("-" * 50)
+        unique_values = sorted(df[compare_param].dropna().unique())
+        for value in unique_values:
+            subset = df[df[compare_param] == value]
+            print(f"{compare_param} = {value}:")
+            for metric in ["pairwise_distance", "wasserstein_distance", "CLAP_distance"]:
+                if metric in subset.columns:
+                    avg_metric = subset[metric].mean()
+                    print(f"  Avg {metric}: {avg_metric:.4f} (n={len(subset)})")
+            print()
     
     # Analyze clustering metrics if present
     clustering_metrics = [
@@ -539,20 +554,19 @@ def analyze_experiments(results_file="./evaluation_results/evaluation_results.cs
 def generate_plots(results_file="./evaluation_results/evaluation_results.csv", 
                    output_dir="./evaluation_results/plots", 
                    filter_params=None,
+                   compare_param=None,
                    clustering_metrics=None,
                    mapping_metrics=None):
     """
-    Generate plots from the evaluation results with optional filtering.
+    Generate plots from the evaluation results with optional filtering and comparison of a specific parameter.
 
     Args:
         results_file (str): Path to the evaluation results CSV file.
         output_dir (str): Directory to save the generated plots.
         filter_params (dict, optional): Dictionary of parameters to filter by.
-            Example: {'sound_corpus': 'mothman', 'dim': [2, 5], 'mapping_method': 'cluster'}
+        compare_param (str, optional): Parameter to compare results for (e.g., 'dim', 'k', 'sound_preprocessing').
         clustering_metrics (list or str, optional): Specific clustering metrics to analyze.
-            If None, defaults to ['combined_silhouette_score']
         mapping_metrics (list or str, optional): Specific mapping metrics to analyze.
-            If None, defaults to ['pairwise_distance']
     """
     results_file = Path(results_file)
     if not results_file.exists():
@@ -660,6 +674,21 @@ def generate_plots(results_file="./evaluation_results/evaluation_results.csv",
                 plt.savefig(plot_file)
                 plt.close()
                 print(f"Saved plot: {plot_file}")
+
+    if compare_param and compare_param in df.columns:
+        print(f"\nGENERATING PLOTS FOR '{compare_param}'")
+        print("-" * 50)
+        for metric in mapping_metrics + clustering_metrics:
+            if metric in df.columns:
+                plt.figure(figsize=(10, 6))
+                sns.boxplot(x=compare_param, y=metric, data=df)
+                plt.title(f"Effect of {compare_param} on {metric}")
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                plot_file = output_dir / f"{compare_param}_effect_on_{metric}.png"
+                plt.savefig(plot_file)
+                plt.close()
+                print(f"Saved plot: {plot_file}")
     
     print("\nPlot generation complete!")
     return df  # Return the filtered dataframe for further analysis if needed
@@ -668,20 +697,23 @@ if __name__ == "__main__":
     e = EvaluationFramework()
     # Example usage with filter:
     filter_params = None  # No filter
+    compare = None
     filter_params = {'distance_metric':'euclidean'}
+    compare = 'text_encoder'  # Compare by sound preprocessing method
 
-    analyze_experiments(filter_params=filter_params)
+    analyze_experiments(filter_params=filter_params, compare_param=compare)
 
     pwd = 'pairwise_distance'
     wsd = 'wasserstein_distance'
     cm = ['combined_silhouette_score', 'combined_calinski_harabasz_score', 'combined_davies_bouldin_score']
     
     # Generate plots with specific metrics
-    # generate_plots(
-    #     filter_params=filter_params,
-    #     clustering_metrics=None,
-    #     mapping_metrics=[pwd]
-    # )
+    generate_plots(
+        filter_params=filter_params,
+        clustering_metrics=None,
+        mapping_metrics=[pwd],
+        compare_param=compare
+    )
     
     
     # e.generate_report()  # writes to evaluation_results/evaluation_report.json

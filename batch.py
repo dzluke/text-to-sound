@@ -29,12 +29,13 @@ def run_comprehensive_evaluation(check_cache=True):
     ]
 
     sound_encoders = ["MuQ"]
-    text_encoders = ["fastText"]  # Added RoBERTa for text encoding
+    # text_encoders = ["fastText", "word2vec", "RoBERTa"]  # Added RoBERTa for text encoding
+    text_encoders = ["word2vec", "RoBERTa"]  # Added RoBERTa for text encoding
     mappings = ["identity", "cluster", "icp"]
     ks = [2, 5, 10, 20, 30]  # Different values of k for clustering
-    sound_preprocessings = ["full", 1000, 500]
+    sound_preprocessings = [250, "full", 1000]
     normalizations = ["standard"]
-    dims = [2, 5, 10, 20]  # Different dimensions for embeddings]
+    dims = [50, 2, 5, 10, 20, 100]  # Different dimensions for embeddings
     distance_metrics = ["euclidean", "cosine"]
     mapping_evaluations = ["pairwise", 'wasserstein', 'CLAP']  #this actually does nothing currently
 
@@ -80,17 +81,16 @@ def run_comprehensive_evaluation(check_cache=True):
                         (existing_results['normalization'] == parameters.normalization) &
                         (existing_results['dim'] == parameters.dim) &
                         (existing_results['distance_metric'] == parameters.distance_metric) &
-                        (~existing_results['CLAP_distance'].isna())  # Ensure CLAP_distance is not NaN
+                        (existing_results['k'] == parameters.k) 
                     )
                     
-                    # For cluster mapping, also check k value
-                    if parameters.mapping == 'cluster' and hasattr(parameters, 'k'):
-                        if 'k' in existing_results.columns:
-                            conditions = conditions & (existing_results['k'] == parameters.k)
-                    
+
+                    # Check if any matching rows exist
                     if conditions.any():
-                        print(f"Skipping previously run experiment")
+                        print(f"Skipping previously run experiment: {parameters.to_string()}")
                         continue
+                    else:
+                        print(f"Running new experiment: {parameters.to_string()}")
                 
                 run(parameters, cache=True, evaluator=framework)
     

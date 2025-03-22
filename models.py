@@ -61,7 +61,7 @@ def muq(wavs, sr):
             # Move to CPU and append to results
             embeddings.append(embedding.cpu())
 
-            print(f"MuQ: Generated embedding with with shape {embedding.shape}")
+            # print(f"MuQ: Generated embedding with with shape {embedding.shape}")
             
         except Exception as e:
             print(f"Error processing sample {i}: {e}")
@@ -77,19 +77,55 @@ def muq(wavs, sr):
 
 
 def RoBERTa(text):
+    """
+    Generate word-level embeddings using RoBERTa by aggregating subword embeddings.
+
+    Args:
+        text (str): Input text.
+
+    Returns:
+        torch.Tensor: Word-level embeddings (one embedding per word).
+    """
     tokenizer = AutoTokenizer.from_pretrained("FacebookAI/roberta-base")
     model = RobertaModel.from_pretrained("FacebookAI/roberta-base").to(device)
 
-    inputs = tokenizer(text, return_tensors="pt", max_length=512, padding=True, truncation=True, stride=50).to(device)
-    tokens = inputs.encodings[0].tokens
-    outputs = model(**inputs)
-    print("RoBERTa: number of tokens: ", len(tokens))
+    # Tokenize the input text
+    inputs = tokenizer(
+        text,
+        return_tensors="pt",
+        max_length=512,
+        padding=True,
+        truncation=True
+    ).to(device)
 
-    last_hidden_states = outputs.last_hidden_state
-    # remove outputs from the start of sequence and end of sequence tokens
-    last_hidden_states = last_hidden_states.squeeze()
-    last_hidden_states = last_hidden_states[1:last_hidden_states.shape[0]-1]
-    return last_hidden_states.detach().cpu()
+    # Get the token embeddings
+    outputs = model(**inputs)
+    token_embeddings = outputs.last_hidden_state.squeeze(0)  # Shape: (num_tokens, hidden_size)
+
+    # Get the tokenized input (subwords)
+    tokens = tokenizer.convert_ids_to_tokens(inputs["input_ids"].squeeze(0))
+
+    # Map subwords back to words using the 'Ġ' prefix
+    word_embeddings = []
+    current_word_embedding = []
+    for i, token in enumerate(tokens):
+        if token.startswith("Ġ") or (i == 0 and not token.startswith("Ġ")):  # Start of a new word
+            # Aggregate the embeddings for the previous word
+            if current_word_embedding:
+                word_embeddings.append(torch.mean(torch.stack(current_word_embedding), dim=0))
+                current_word_embedding = []
+
+        # Add the subword embedding to the current word
+        current_word_embedding.append(token_embeddings[i])
+
+    # Add the last word's embedding
+    if current_word_embedding:
+        word_embeddings.append(torch.mean(torch.stack(current_word_embedding), dim=0))
+
+    # Stack the word embeddings into a single tensor
+    word_embeddings = torch.stack(word_embeddings)
+
+    return word_embeddings.detach().cpu()
 
 
 def fastText(text):
@@ -106,18 +142,21 @@ def fastText(text):
 def word2vec(text):
     # Download and load the pre-trained Word2Vec model
     w2v_model = api.load('word2vec-google-news-300')
+    words = text.split()
     vecs = []
-    for word in text.split():
+    indices = []
+    for i, word in enumerate(words):
         # Retrieve the word vector
         try:
             word_vector = w2v_model[word]
             vecs.append(word_vector)
+            indices.append(i)  # Append the index for valid words
         except KeyError:
             print("Word '{}' not found in vocabulary".format(word))
             continue
     vecs = np.stack(vecs)
     print("word2vec shape: ", vecs.shape)
-    return torch.from_numpy(vecs)
+    return torch.from_numpy(vecs), indices
 
 
 def load_CLAP():
@@ -140,7 +179,3 @@ def CLAP_text(text, model, processor):
     inputs = processor(text=text, return_tensors="pt", padding=True, truncation=True).to(device)
     text_embeddings = model.get_text_features(**inputs)
     return text_embeddings.detach().cpu()
-
-
-# m, p = load_CLAP()
-# print(CLAP_text(['this', 'is', 'a', 'test'], m, p).shape)

@@ -214,6 +214,7 @@ def pairwise_distance(t_embs, s_embs, distance_metric):
     :param s_embs:
     :return: a distance
     """
+    assert t_embs.shape[0] == s_embs.shape[0], "Text and sound embeddings must have the same number of samples"
     max_pairs = 1000
     distance = 0
     num_t_embs = t_embs.shape[0]
@@ -233,7 +234,6 @@ def pairwise_distance(t_embs, s_embs, distance_metric):
             if (i, j) not in pairs:  # Avoid duplicates
                 pairs.append((i, j))
     
-    pairs = list(combinations(range(num_t_embs), 2))  # list of all possible pairs of indices
     for i, j in pairs:
         t1, t2 = t_embs[i], t_embs[j]
         s1, s2 = s_embs[i], s_embs[j]
@@ -557,6 +557,9 @@ def run(params, evaluator=None, cache=True, save_sound=False):
 
     print("Embedding text...")
     text_embeddings = embed_text(" ".join(text_corpus), text_encoder, text_cache_file)
+    if params.text_encoder == "word2vec":
+        text_embeddings, valid_indices = text_embeddings
+        text_corpus = [t for i, t in enumerate(text_corpus) if i in valid_indices]  # filter out invalid text samples that word2vec couldn't process
 
     # check again to see if this will be a valid run
     if params.dim > len(sound_embeddings) or params.dim > len(text_embeddings):
@@ -702,8 +705,8 @@ def run(params, evaluator=None, cache=True, save_sound=False):
 if __name__ == "__main__":
 
     e = ParameterGenerator(
-        sound_path="./corpora/sound/targets",
-        text_path="./corpora/text/pound.txt",
+        sound_path="./corpora/sound/choir",
+        text_path="./corpora/text/neruda.txt",
         sound_encoders=["MuQ"],
         text_encoders=["fastText"],
         mappings=["identity", "cluster", "icp"],
@@ -712,7 +715,7 @@ if __name__ == "__main__":
         dims=[5],
         distance_metrics=["euclidean"],
         mapping_evaluations=["pairwise"],
-        ks=[3]  # Different values of k for clustering
+        ks=[5]  # Different values of k for clustering
     )
 
     parameter_list = e.create_params()
