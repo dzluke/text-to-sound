@@ -17,7 +17,7 @@ class Parameter:
     A set of parameters for one run of the system
     """
     def __init__(self, sound_path, text_path, sound_encoder, text_encoder, mapping, 
-                 sound_preprocessing, normalization, dim, distance_metric, k=None, 
+                 sound_preprocessing, normalization, dim, distance_metric, k=0.0, 
                  trim_silence=True, icp_iterations=50, batch_size=32, cycle_weight=0.1, 
                  learning_rate=0.01):
         self.sound_path = sound_path
@@ -29,8 +29,7 @@ class Parameter:
         self.normalization = normalization
         self.dim = dim
         self.distance_metric = distance_metric
-        if k is not None:
-            self.k = k
+        self.k = k
         self.trim_silence = trim_silence
         
         # Add ICP-specific parameters
