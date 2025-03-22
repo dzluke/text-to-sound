@@ -1,0 +1,457 @@
+% Template LaTeX file for DAFx-25 papers
+%
+% To generate the correct references using BibTeX, run
+%     latex, bibtex, latex, latex
+% modified...
+% - from DAFx-00 to DAFx-02 by Florian Keiler, 2002-07-08
+% - from DAFx-03 to DAFx-04 by Gianpaolo Evangelista, 2004-02-07 
+% - from DAFx-05 to DAFx-06 by Vincent Verfaille, 2006-02-05
+% - from DAFx-06 to DAFx-07 by Vincent Verfaille, 2007-01-05
+%                          and Sylvain Marchand, 2007-01-31
+% - from DAFx-07 to DAFx-08 by Henri Penttinen, 2007-12-12
+%                          and Jyri Pakarinen 2008-01-28
+% - from DAFx-08 to DAFx-09 by Giorgio Prandi, Fabio Antonacci 2008-10-03
+% - from DAFx-09 to DAFx-10 by Hannes Pomberger 2010-02-01
+% - from DAFx-10 to DAFx-12 by Jez Wells 2011
+% - from DAFx-12 to DAFx-14 by Sascha Disch 2013
+% - from DAFx-15 to DAFx-16 by Pavel Rajmic 2015
+% - from DAFx-16 to DAFx-17 by Brian Hamilton 2016
+% - from DAFx-17 to DAFx-18 by Annibal Ferreira and Matthew Davies 2017
+% - from DAFx-18 to DAFx-19 by Dave Moffat 2019
+% - from DAFx-19 to DAFx-20-21-22 by Gianpaolo Evangelista 2019-21
+% - from DAFx-20-21-22 to DAFx-23 by Federico Fontana 2022-11-25
+% - from DAFx-23 to DAFx-24 by Matteo Scerbo 2023-10-05
+% - from DAFx-24 to DAFx-25 by Leonardo Gabrielli 2024-12-13
+%
+% Template with hyper-references (links) active after conversion to pdf
+% (with the distiller) or if compiled with pdflatex.
+%
+% 20060205: added package 'hypcap' to correct hyperlinks to figures and tables
+%                      use of \papertitle and \paperauthorA, etc for same title in PDF and Metadata
+% 20190205: Package 'hypcap' removed, and replaced with 'caption', to allow for the inclusion
+%		       of a CC UP licence.
+% 20221125: Package 'nimbusserif' commented. PDF test template generated with
+%                      pdfTeX 3.14159265-2.6-1.40.20 (TeX Live 2019/Debian) kpathsea version 6.3.1
+%
+% 1) Please compile using latex or pdflatex.
+% 2) If using pdflatex, you need your figures in a file format other than eps! e.g. png or jpg is working
+% 3) Please use "paperftitle" and "pdfauthor" definitions below
+
+%------------------------------------------------------------------------------------------
+%  !  !  !  !  !  !  !  !  !  !  !  ! user defined variables  !  !  !  !  !  !  !  !  !  !  !  !  !  !
+% Please use the following commands to define title and author(s) of the paper.
+% paperauthorA MUST be the the first author of the paper
+% Please comment the unused definitions 
+\def\papertitle{Templates for DAFx25}
+\def\paperauthorA{Author One}
+\def\paperauthorB{Author Two}
+\def\paperauthorC{Author Three}
+\def\paperauthorD{Author Four}
+%\def\paperauthorE{Author Five}
+%\def\paperauthorF{Author Six}
+%\def\paperauthorG{Author Seven}
+%\def\paperauthorH{Author Eight}
+%\def\paperauthorI{Author Nine}
+%\def\paperauthorJ{Author Ten}
+
+% Authors' affiliations have to be set below
+
+%------------------------------------------------------------------------------------------
+\documentclass[twoside,a4paper]{article}
+\usepackage{etoolbox}
+\usepackage{dafx_25}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{euscript}
+%\usepackage[latin1]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+%\usepackage[T1]{fontenc}
+%\usepackage{lmodern}
+%\usepackage{nimbusserif}
+\usepackage{ifpdf}
+\usepackage[english]{babel}
+\usepackage{caption}
+\usepackage{subfig} % or can use subcaption package
+\usepackage{color}
+
+\input glyphtounicode
+\pdfgentounicode=1
+
+\setcounter{page}{1}
+\ninept
+
+% build the list of authors and set the flag \multipleauth to handle the et al. in the copyright note (in DAFx_24.sty)
+%==============================DO NOT MODIFY =======================================
+\newcounter{numauth}\setcounter{numauth}{1}
+\newcounter{listcnt}\setcounter{listcnt}{1}
+\newcommand\authcnt[1]{\ifdefined#1 \stepcounter{numauth} \fi}
+
+\newcommand\addauth[1]{
+\ifdefined#1 
+\stepcounter{listcnt}
+\ifnum \value{listcnt}<\value{numauth}
+\appto\authorslist{, #1}
+\else
+\appto\authorslist{~and~#1}
+\fi
+\fi}
+%======DO NOT MODIFY UNLESS YOUR PAPER HAS MORE THAN 10 AUTHORS========================
+%==we count the authors defined at the beginning of the file (paperauthorA is mandatory and already accounted for)
+\authcnt{\paperauthorB}
+\authcnt{\paperauthorC}
+\authcnt{\paperauthorD}
+\authcnt{\paperauthorE}
+\authcnt{\paperauthorF}
+\authcnt{\paperauthorG}
+\authcnt{\paperauthorH}
+\authcnt{\paperauthorI}
+\authcnt{\paperauthorJ}
+%==we create a list of authors for pdf tagging, for example: paperauthorA, paperauthorB, ... and paperauthorF (last author)
+\def\authorslist{\paperauthorA}
+\addauth{\paperauthorB}
+\addauth{\paperauthorC}
+\addauth{\paperauthorD}
+\addauth{\paperauthorE}
+\addauth{\paperauthorF}
+\addauth{\paperauthorG}
+\addauth{\paperauthorH}
+\addauth{\paperauthorI}
+\addauth{\paperauthorJ}
+%====================================================================================
+
+\usepackage{times}
+% Saves a lot of ouptut space in PDF... after conversion with the distiller
+% Delete if you cannot get PS fonts working on your system.
+
+
+% pdf-tex settings: detect automatically if run by latex or pdflatex
+\newif\ifpdf
+\ifx\pdfoutput\relax
+\else
+   \ifcase\pdfoutput
+      \pdffalse
+   \else
+      \pdftrue
+   \fi
+\fi
+
+\ifpdf % compiling with pdflatex
+  \usepackage[pdftex,
+    pdftitle={\papertitle},
+    pdfauthor={\authorslist},
+    pdfsubject={Proceedings of the 28th International Conference on Digital Audio Effects (DAFx25)},
+    colorlinks=false, % links are activated as color boxes instead of color text
+    bookmarksnumbered, % use section numbers with bookmarks
+    pdfstartview=XYZ % start with zoom=100% instead of full screen; especially useful if working with a big screen :-)
+  ]{hyperref}
+  \pdfcompresslevel=9
+  \usepackage[pdftex]{graphicx}
+ % \usepackage[figure,table]{hypcap}
+\else % compiling with latex
+  \usepackage[dvips]{epsfig,graphicx}
+  \usepackage[dvips,
+    pdftitle={\papertitle},
+    pdfauthor={\authorslist},
+    pdfsubject={Proceedings of the 28th International Conference on Digital Audio Effects (DAFx25)},
+    colorlinks=false, % no color links
+    bookmarksnumbered, % use section numbers with bookmarks
+    pdfstartview=XYZ % start with zoom=100% instead of full screen
+  ]{hyperref}
+  % hyperrefs are active in the pdf file after conversion
+  %\usepackage[figure,table]{hypcap}
+\fi
+\usepackage[hypcap=true]{caption}
+\title{\papertitle}
+
+%-------------SINGLE-AFFILIATION SINGLE-AUTHOR HEADER STARTS (uncomment below if your paper has a single author)----------------------------------------
+%\affiliation{
+%\paperauthorA\,\sthanks{Thanks to the predecessors for the templates}}
+% {\href{https://dafx25.dii.univpm.it/}{Dept. of Information Engineering} \\ Universit\`a Politecnica delle Marche \\ Ancona, IT\\
+%{\tt \href{mailto:dafx25@dii.univpm.it}{dafx25@dii.univpm.it}}
+%}
+%
+%Please note that the copyright notice should be separated from the text by a line (like a footnote). This works automatically when you have an \sthanks command 
+%in the authors' line. However, if your paper does not require an \sthanks command, please use an empty (vertical space eating) \thanks command as follows:
+% \affiliation{
+% \paperauthorA\,\thanks{\vspace{-3mm}}}
+% {\href{https://dafx25.dii.univpm.it/}{Dept. of Information Engineering} \\ Universit\`a Politecnica delle Marche \\ Ancona, IT\\
+% {\tt \href{mailto:dafx25@dii.univpm.it}{dafx25@dii.univpm.it}}
+% }
+%-------------SINGLE-AFFILIATION SINGLE-AUTHOR HEADER ENDS-------------------------------------------------------------------------------------------------------------------
+
+%------------SINGLE-AFFILIATION MULTIPLE-AUTHORS HEADER STARTS (uncomment below if your paper has two or more authors from the same institution)
+% \affiliation{
+% \paperauthorA\,\sthanks{Thanks to the predecessors for the templates}and \paperauthorB \,\sthanks{This work was supported by the XYZ Foundation}}
+% {\href{https://dafx25.dii.univpm.it/}{Dept. of Information Engineering} \\ Universit\`a Politecnica delle Marche \\ Ancona, IT\\
+% {\tt \href{mailto:dafx25@dii.univpm.it}{dafx25@dii.univpm.it}}
+% }
+%
+%Please note that the copyright notice should be separated from the text by a line (like a footnote). This works automatically when you have an \sthanks command 
+%in the authors' line. However, if your paper does not require an \sthanks command, please use an empty (vertical space eating) \thanks command as follows:
+% \affiliation{
+% \paperauthorA\ and \paperauthorB\,\thanks{\vspace{-3mm}}}
+% {\href{https://dafx25.dii.univpm.it/}{Dept. of Information Engineering} \\ Universit\`a Politecnica delle Marche \\ Ancona, IT\\
+% {\tt \href{mailto:dafx25@dii.univpm.it}{dafx25@dii.univpm.it}}
+% }
+%-----------------------------------SINGLE-AFFILIATION-MULTIPLE-AUTHORS HEADER ENDS----------------------------------------------------------------------------------------
+
+%---------------TWO-AFFILIATIONS HEADER STARTS (uncomment below if your paper has two authors, each from a different institution)-----------------------------
+% \twoaffiliations{
+% \paperauthorA \,\sthanks{Thanks to the predecessors for the templates}}
+% {\href{https://dafx25.dii.univpm.it/}{Dept. of Information Engineering} \\ Universit\`a Politecnica delle Marche \\ Ancona, IT\\
+% {\tt \href{mailto:dafx25@dii.univpm.it}{dafx25@dii.univpm.it}}
+% }
+% {\paperauthorB \,\sthanks{This work was supported by the XYZ Foundation}}
+% {\href{https://dafx24.surrey.ac.uk}{Institute of Sound Recording} \\ University of Surrey\\ Guildford, UK\\
+% {\tt \href{mailto:dafx24@surrey.ac.uk}{dafx24@surrey.ac.uk}}
+% }
+%
+%Please note that the copyright notice should be separated from the text by a line (like a footnote). This works automatically when you have an \sthanks command 
+%in the authors' line. However, if your paper does not require any \sthanks command, please use an empty (vertical space eating) \thanks command only in one of the authors
+%headers as follows:
+% \twoaffiliations{
+% \paperauthorA \,\sthanks{Thanks to the predecessors for the templates}}
+% {\href{https://dafx25.dii.univpm.it/}{Dept. of Information Engineering} \\ Universit\`a Politecnica delle Marche \\ Ancona, IT\\
+% {\tt \href{mailto:dafx25@dii.univpm.it}{dafx25@dii.univpm.it}}
+% }
+% {\paperauthorB \,\sthanks{This work was supported by the XYZ Foundation}}
+% {\href{https://dafx24.surrey.ac.uk}{Institute of Sound Recording} \\ University of Surrey\\ Guildford, UK\\
+% {\tt \href{mailto:dafx24@surrey.ac.uk}{dafx24@surrey.ac.uk}}
+% }
+%-------------------------------------TWO-AFFILIATIONS HEADER ENDS------------------------------------------------------
+
+%%---------------THREE-AFFILIATIONS HEADER STARTS (uncomment below if your paper has three authors, each from a different institution)-----------------------
+% \threeaffiliations{
+% \paperauthorA \,\sthanks{Thanks to the predecessors for the templates}}
+% {\href{https://dafx25.dii.univpm.it/}{Dept. of Information Engineering} \\ Universit\`a Politecnica delle Marche \\ Ancona, IT\\
+% {\tt \href{mailto:dafx25@dii.univpm.it}{dafx25@dii.univpm.it}}
+% }
+% {\paperauthorB \,\sthanks{This work was supported by the XYZ Foundation}}
+% {\href{https://dafx24.surrey.ac.uk}{Institute of Sound Recording} \\ University of Surrey\\ Guildford, UK\\
+% {\tt \href{mailto:dafx24@surrey.ac.uk}{dafx24@surrey.ac.uk}}
+% }
+% {\paperauthorC \,\sthanks{Illustrious contributor}}
+% {\href{https://dafx23.create.aau.dk/}{Multisensory Experience Lab} \\ Aalborg University \\ Copenhagen, Denmark \\
+% {\tt \href{mailto:dafx2023@gmail.com}{dafx2023@gmail.com}}
+% }
+%
+%Please note that the copyright notice should be separated from the text by a line (like a footnote). This works automatically when you have an \sthanks command 
+%in the authors' line. However, if your paper does not require any \sthanks command, please use an empty (vertical space eating) \thanks command only in one of the authors
+%headers as follows:
+% \threeaffiliations{
+% \paperauthorA \,\sthanks{Thanks to the predecessors for the templates}}
+% {\href{https://dafx25.dii.univpm.it/}{Dept. of Information Engineering} \\ Universit\`a Politecnica delle Marche \\ Ancona, IT\\
+% {\tt \href{mailto:dafx25@dii.univpm.it}{dafx25@dii.univpm.it}}
+% }
+% {\paperauthorB \,\sthanks{This work was supported by the XYZ Foundation}}
+% {\href{https://dafx24.surrey.ac.uk}{Institute of Sound Recording} \\ University of Surrey\\ Guildford, UK\\
+% {\tt \href{mailto:dafx24@surrey.ac.uk}{dafx24@surrey.ac.uk}}
+% }
+% {\paperauthorC \,\sthanks{Illustrious contributor}}
+% {\href{https://dafx23.create.aau.dk/}{Multisensory Experience Lab} \\ Aalborg University \\ Copenhagen, Denmark \\
+% {\tt \href{mailto:dafx2023@gmail.com}{dafx2023@gmail.com}}
+% }
+%-------------------------------------THREE-AFFILIATIONS HEADER ENDS------------------------------------------------------
+
+%----------------FOUR-AFFILIATIONS HEADER STARTS (uncomment below if your paper has four authors, each from a different institution)-----------------------
+ \fouraffiliations{
+ \paperauthorA \,\sthanks{Thanks to the predecessors for the templates}}
+ {\href{https://dafx25.dii.univpm.it/}{Dept. of Information Engineering} \\ Universit\`a Politecnica delle Marche \\ Ancona, IT\\
+ {\tt \href{mailto:dafx25@dii.univpm.it}{dafx25@dii.univpm.it}}
+ }
+ {\paperauthorB \,\sthanks{This work was supported by the XYZ Foundation}}
+ {\href{https://dafx24.surrey.ac.uk}{Institute of Sound Recording} \\ University of Surrey\\ Guildford, UK\\
+ {\tt \href{mailto:dafx24@surrey.ac.uk}{dafx24@surrey.ac.uk}}
+ }
+ {\paperauthorC \,\sthanks{Illustrious contributor}}
+ {\href{https://dafx23.create.aau.dk/}{Multisensory Experience Lab} \\ Aalborg University \\ Copenhagen, Denmark \\
+ {\tt \href{mailto:dafx2023@gmail.com}{dafx2023@gmail.com}}
+ }
+ {\paperauthorD \,\sthanks{This guy is a very good fellow}}
+ {\href{https://www.mdw.ac.at/ike/}{MDW} \\ University of Music and Performing Arts\\ Vienna, Austria\\
+ {\tt \href{mailto:dafx2022@gmail.com}{dafx2022@gmail.com}}
+ }
+%
+%Please note that the copyright notice should be separated from the text by a line (like a footnote). This works automatically when you have an \sthanks command 
+%in the authors' line. However, if your paper does not require any \sthanks command, please use an empty (vertical space eating) \thanks command only in one of the authors
+%headers as follows:
+% \fouraffiliations{
+% \paperauthorA \,\sthanks{Thanks to the predecessors for the templates}}
+% {\href{https://dafx25.dii.univpm.it/}{Dept. of Information Engineering} \\ Universit\`a Politecnica delle Marche \\ Ancona, IT\\
+% {\tt \href{mailto:dafx25@dii.univpm.it}{dafx25@dii.univpm.it}}
+% }
+% {\paperauthorB \,\sthanks{This work was supported by the XYZ Foundation}}
+% {\href{https://dafx24.surrey.ac.uk}{Institute of Sound Recording} \\ University of Surrey\\ Guildford, UK\\
+% {\tt \href{mailto:dafx24@surrey.ac.uk}{dafx24@surrey.ac.uk}}
+% }
+% {\paperauthorC \,\sthanks{Illustrious contributor}}
+% {\href{https://dafx23.create.aau.dk/}{Multisensory Experience Lab} \\ Aalborg University \\ Copenhagen, Denmark \\
+% {\tt \href{mailto:dafx2023@gmail.com}{dafx2023@gmail.com}}
+% }
+% {\paperauthorD \,\sthanks{This guy is a very good fellow}}
+% {\href{https://www.mdw.ac.at/ike/}{MDW} \\ University of Music and Performing Arts\\ Vienna, Austria\\
+% {\tt \href{mailto:dafx2022@gmail.com}{dafx2022@gmail.com}}
+% }
+%-------------------------------------FOUR-AFFILIATIONS HEADER ENDS------------------------------------------------------
+
+\begin{document}
+% more pdf-tex settings:
+\ifpdf % used graphic file format for pdflatex
+  \DeclareGraphicsExtensions{.png,.jpg,.pdf}
+\else  % used graphic file format for latex
+  \DeclareGraphicsExtensions{.eps}
+\fi
+
+%\makeatletter
+%\pdfbookmark[0]{\@pdftitle}{title}
+%\makeatother
+
+\maketitle
+
+\begin{abstract}
+This research focuses on developing a framework for unsupervised text-to-sound mapping by aligning two distinct embedding spaces: one for text and one for sound. The goal is to create a system that converts textual input into corresponding sound output without relying on labeled data. This paper presents the methodology, experiments, and results of this novel approach, along with its artistic implications.
+\end{abstract}
+
+\section{Introduction}
+This research will focus on developing a framework for unsupervised text-to-sound mapping by mapping two distinct embedding spaces: one for text and one for sound. The goal is to create a system that can convert a textual input into a corresponding sound output, without relying on labeled data. The most challenging aspect of this research lies in finding the appropriate criteria for mapping the two spaces. Ultimately, the sound generated from a sentence should reflect the meaning and inherent properties of the input text, as well as the chosen sound dataset.
+
+The task: Create an artistic/creative tool that can generate mappings between words and sounds. I type a sentence, this sentence is represented musically, where each word becomes one sound. We do not seek an objective mapping in which meaning is recreated with sound. There is no semantic link between a word and its sonic mapping, but there is a semantic relationship as a whole, in the relationships between sounds. An example on the relationship between words and sounds: evaluation is not that ‘red’ maps to a certain sound that relates to the concept of ‘red’, but that the relationship between the ‘red’ sound and the ‘blue’ sound is somehow similar to the relationship between the (semantic meaning of the) words ‘red’ and ‘blue’. Since ‘red’ and ‘blue’ are both colors, they belong to the same semantic category, yet they are not similar colors. Therefore, a possible sound result could be two sounds that are from a similar category, such as: string instrument samples, long sounds, harmonic sounds, or low frequency sounds; yet have a parameter that is distinct, such as: loudness, pitch, or timbre.
+
+In the context of natural language processing (NLP), word embeddings, such as word2vec, have proven to be highly effective in capturing semantic relationships between words. In a similar vein, deep learning techniques have been applied to audio data to extract meaningful representations. However, the challenge arises when trying to map these two embedding spaces—text and sound—into a common framework. Unsupervised learning techniques can offer the necessary flexibility to explore this mapping without relying on labeled data, which is often scarce in audio datasets. The objectivity of labeling musical data can be questioned, as it may result from personal biases: the same music may sound different to two different people, based on their preferences and listening history. For example, a listener entrained in Western music and sounds may label an inharmonic sound as sad or scary, which could result from cultural and historical uses of inharmonic sounds.
+
+This research will attempt to create a system that maps a given text input into a corresponding sound output by:
+\begin{itemize}
+    \item Mapping a sound corpus and a text input into distinct embedding spaces using pre-trained models
+    \item Addressing the complex task of aligning these embeddings into a meaningful text-to-sound mapping using unsupervised methods
+    \item Creating a mapping between the two embedding spaces that can convert an input text into an output audio file
+    \item Evaluating the given mapping both quantitatively and qualitatively
+\end{itemize}
+
+\section{Related Work}
+Different systems for text-to-sound mapping have been created. CLAP is an example of a multi-modal embedding space that connects sound and text in the same space.
+
+Various sound models exist. We can take advantage of existing models that feature an encoder in their architecture and use them to create embeddings of sound. Some examples of audio encoders are: MuQ, EnCodec, Wav2Vec.
+
+There are many available text embedding models, including word2vec, fastText, BERT, GloVe, and T5. These models can be static or contextual.
+
+Multi-modal models such as Wav2Vec2-BERT, AudioCLIP, CLAP, MERT, and MuLan, and MuQ-MuLan.
+
+Find and discuss art pieces that do something similar to this.
+
+\section{Methodology}
+We use MuQ for sound embedding.
+
+We use three text embeddings: two are static: word2vec, fastText and one is contextual: RoBERTa.
+
+We use normalization techniques (StandardScaler from sklearn) and PCA.
+
+We define three mapping strategies. Each strategy starts by applying normalization and PCA with the same parameters for the sound and text spaces. The strategies are:
+\begin{enumerate}
+    \item Identity: the mapping matrix is the identity, so we simply find the closest sound embedding to the input text embedding.
+    \item Cluster: we cluster the sound and text embeddings separately. Then for each text input, we find the sound cluster whose centroid is closest to the centroid of the text cluster that the input belongs to. Then we find the sound embedding in that cluster that is closest to our text embedding.
+    \item Iterative Closest Point (ICP): defined in a different paper, provide summary here.
+\end{enumerate}
+
+We evaluate our system in different ways.
+
+We evaluate mappings with three distance metrics:
+\begin{enumerate}
+    \item Pairwise distance: given a random pair of text embeddings, we compute the distance between the text embeddings. Then we compute the distance between the two sound embeddings that those texts map to. Then we calculate the difference between the distances.
+    \item Wasserstein distance: same as the pairwise distance except we compare the distributions of distances between text pairs and sound pairs by calculating the Wasserstein (Earth Mover’s) distance.
+    \item CLAP distance: we create the same pairs but the distance between pairs is calculated in CLAP feature space instead of the transformed embedding space that the text and sound embeddings are in.
+\end{enumerate}
+
+The pairwise approach is used because of our motivating example presented in the Introduction: we wish for the relationship between the input words ‘red’ and ‘blue’ to be similar to the relationship between the sounds that result from these words. Therefore, the distance between the two text embeddings and the distance between the two sound embeddings should be similar.
+
+We also evaluate our clustering in the following way:
+
+After clustering each space separately, we calculate the following three clustering metrics on the combined space, meaning a single space in which all clusters for both text and sound are present:
+\begin{enumerate}
+    \item Silhouette score
+    \item Calinski-Harabasz score
+    \item Davies Bouldin score
+\end{enumerate}
+
+\section{Experiments and Results}
+We define one experiment to be a single run of our system with a unique set of parameters. The possible parameters of an experiment are:
+\begin{itemize}
+    \item Sound corpus
+    \item Text input
+    \item Sound embedding
+    \item Text embedding
+    \item Sound pre-processing
+    \item Normalization method
+    \item PCA dimensionality
+    \item Mapping type
+    \item Number of clusters (k) if using clustering method
+\end{itemize}
+
+We evaluate our system quantitatively with the metrics presented in Section 3: Methodology. Here we present the results:
+
+Discuss which mappings performed best with different distance metrics.
+
+Discuss qualitative evaluation, which is subjective.
+
+\section{Discussion}
+Present the analysis of the results. Tradeoffs of different distance metrics and clustering metrics. Discuss challenges and insights.
+
+\section{Conclusion and Future Work}
+Summarize paper: the task, the methods, the experiments, the results, and analysis.
+
+Reflect on the usefulness of such an artistic tool, specifically the advantages and disadvantages of using an unsupervised system.
+
+Discuss various possibilities for future work, which should be robust and include:
+\begin{itemize}
+    \item More sound embeddings
+    \item The use of a sound VAE that allows for the generation of new sounds
+    \item The ability to train/create a mapping from a large text corpus and then input a new text input that is what is sonified. Could this be real time? What would it do if a word was input that it hadn’t seen before?
+    \item Polyphony
+\end{itemize}
+
+\section{Acknowledgments}
+Many thanks to the great number of anonymous reviewers!
+
+%\newpage
+\nocite{*}
+\bibliographystyle{IEEEbib}
+\bibliography{DAFx25_tmpl} % requires file DAFx25_tmpl.bib
+
+\section{Appendix: Margin Check}
+This section shows the column margins for the text. \bigskip\newline
+
+Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempor incidunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquid ex ea commodi consequat. Quis aute iure reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint obcaecat cupiditat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+
+Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.
+
+Ut visi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+Nam liber tempor cum soluta nobis eleifend option congue nihil imperdiet doming id quod mazim placerat facer possim assum. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.
+
+Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis.
+
+At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, At accusam aliquyam diam diam dolore dolores duo eirmod eos erat, et nonumy sed tempor et et invidunt justo labore Stet clita ea et gubergren, kasd magna no rebum. sanctus sea sed takimata ut vero voluptua. est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat.
+
+Consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+
+Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempor incidunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquid ex ea commodi consequat. Quis aute iure reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint obcaecat cupiditat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+
+Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.
+
+Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+Nam liber tempor cum soluta nobis eleifend option congue nihil imperdiet doming id quod mazim placerat facer possim assum. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.
+
+Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis.
+
+At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, At accusam aliquyam diam diam dolore dolores duo eirmod eos erat, et nonumy sed tempor et et invidunt justo labore Stet clita ea et gubergren, kasd magna no rebum. sanctus sea sed takimata ut vero voluptua. est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat.
+
+Consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. 
+
+Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempor incidunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquid ex ea commodi consequat. Quis aute iure reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint obcaecat cupiditat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+%%Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.
+
+%%Ut visi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla ..
+\end{document}

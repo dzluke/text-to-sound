@@ -2,7 +2,123 @@
 
 # Paper
 
-Should have a robust future work section
+## 1. Introduction
+
+This research will focus on developing a framework for unsupervised text-to-sound map-
+ping by mapping two distinct embedding spaces: one for text and one for sound. The
+goal is to create a system that can convert a textual input into a corresponding sound
+output, without relying on labeled data. The most challenging aspect of this research
+lies in finding the appropriate criteria for mapping the two spaces. Ultimately, the sound
+generated from a sentence should reflect the meaning and inherent properties of the input
+text, as well as the chosen sound dataset.
+
+The task: Create an artistic/creative tool that can generate mappings between words and sounds. 
+I type a sentence, this sentence is represented musically, where each word becomes one sound. 
+We do not seek an objective mapping in which meaning is recreated with sound. There is no semantic link between the a word and its sonic mapping, but there is a semantic relationship as a whole, in the relationships between sounds. An example on the relationship between words and sounds: evaluation is not that ‘red’ maps to a certain sound that relates to the concept of ‘red’, but that the relationship between the ‘red’ sound and the ‘blue’ sound is somehow similar to the relationship between the (semantic meaning of the) words ‘red’ and ‘blue’. Since ‘red’ and ‘blue’ are both colors, they belong to the same semantic category, yet they are not similar colors. Therefore, a possible sound result could be two sounds that are from a similar category, such as:  string instrument samples, long sounds, harmonic sounds, or low frequency sounds; yet have a parameter that is distinct, such as: loudness, pitch, or timbre. 
+
+In the context of natural language processing (NLP), word embeddings, such as word2vec,
+have proven to be highly effective in capturing semantic relationships between words.
+In a similar vein, deep learning techniques have been applied to audio data to extract
+meaningful representations. However, the challenge arises when trying to map these two
+embedding spaces—text and sound—into a common framework. Unsupervised learning
+techniques can offer the necessary flexibility to explore this mapping without relying on
+labeled data, which is often scarce in audio datasets (citation needed). The objectivity of labeling musical data can be questioned, as it may result from personal biases: the same music may sound different to two different people, based on their preferences and listening history (citation needed). For example, a listener entrained in Western music and sounds may label an inharmonic sound as sad or scary, which could result from cultural and historical uses of inharmonic sounds. 
+
+This research will attempt to create a system that maps a given text input into a corresponding sound output by:
+
+- Mapping a sound corpus and a text input into distinct embedding spaces using pre-trained models
+- Addressing the complex task of aligning these embeddings into a meaningful text-
+to-sound mapping using unsupervised methods
+- Creating a mapping between the two embedding spaces that can convert an input text into an output audio file
+- Evaluating the given mapping both quantitatively and qualitatively
+
+Short summary of results, including quantitative and qualitative results. Comment on whether the quantitative and qualitative evaluations align: Do we like the sounds that result from the best mapping more than the sounds that come from the other mappings? 
+
+## 2. Related Work
+
+Different systems for text-to-sound mapping have been created (give examples). CLAP is an example of a multi-modal embedding space that connects sound and text in the same space. 
+
+Various sound models exist. We can take advantage of existing models that feature an encoder in their architecture and use them to create embeddings of sound. Some examples of audio encoders are: MuQ, EnCodec, Wav2Vec. 
+
+There are many available text embedding models, including word2vec, fastText, BERT, GloVe, and T5. These models can be static or contextual. 
+
+Multi-modal models such as Wav2Vec2-BERT, AudioCLIP, CLAP, MERT, and MuLan, and MuQ-MuLan.
+
+Find and discuss art pieces that do something similar to this.
+
+## 3. Methodology
+
+We use MuQ for sound embedding.
+
+We use three text embeddings: two are static: word2vec, fastText and one is contextual: RoBERTa.
+
+We use normalization techniques (StandardScaler from sklearn) and PCA. 
+
+We define three mapping strategies. Each strategy starts by applying normalization and PCA with the same parameters for the sound and text spaces. The strategies are: 
+
+1. Identity: the mapping matrix is the identity, so we simply find the closest sound embedding to the input text embedding
+2. Cluster: we cluster the sound and text emebeddings separately. Then for each text input, we find the sound cluster whose centroid is closest to the centroid of the text cluster that the input belongs to. Then we find the sound embedding in that cluster that is closest to our text embedding.
+3. Iterative Closest Point (ICP): defined in a different paper, provide summary here
+
+We evaluate our system in different ways.
+
+We evaluate mappings with three distance metrics:
+
+1. Pairwise distance: given a random pair of text embeddings, we compute the distance between the text embeddings. Then we compute the distance between the two sound embeddings that those texts map to. Then we calculate the difference between the distances.
+2. Wasserstein distance: same as the pairwise distance except we compare the distributions of distances between text pairs and sound pairs by calculating the Wasserstein (Earth Mover’s) distance
+3. CLAP distance: we create the same pairs but the distance between pairs is calculated in CLAP feature space instead of the transformed embedding space that the text and sound embeddings are in
+
+The pairwise approach is used because of our motivating example presented in the Introduction: we wish for the relationship between the input words ‘red’ and ‘blue’ to be similar to the relationship between the sounds that result from these words. Therefore, the distance between the two text embeddings and the distance between the two sound embeddings should be similar.
+
+We choose these three metrics because
+
+We also evaluate our clustering in the following way:
+
+After clustering each space separately, we calculate the following three clustering metrics on the combined space, meaning a single space in which all clusters for both text and sound are present:
+
+1. Silhouette score
+2. Calinski-Harabasz score
+3. Davies Bouldin score
+
+We use these three metrics because
+
+## 4. Experiments and Results
+
+We define one experiment to be a single run of our system with a unique set of parameters. The possible parameters of an experiment are:
+
+- sound corpus
+- text input
+- sound embedding
+- text embedding
+- sound pre-processing
+- normalization method
+- PCA dimensionality
+- mapping type
+    - number of clusters (k) if using clustering method
+
+We evaluate our system quantitatively with the metrics presented in Section 3: Methodology. Here we present the results:
+
+Discuss which mappings performed best with different distance metrics
+
+Discuss qualitative evaluation, which is subjective.
+
+## 5. Discussion
+
+Present the analysis of the results. Tradeoffs of different distance metrics and clustering metrics. Discuss challenges and insights. 
+
+## 6. Conclusion and Future Work
+
+Summarize paper: the task, the methods, the experiments, the results, and analysis.
+
+Reflect on the usefulness of such an artistic tool, specifically the advantages and disadvantages of using an supervised system.
+
+Discuss various possibilities for future work, which should be robust and include: 
+
+- more sound embeddings
+- the use of a sound VAE that allows for the generation of new sounds
+- the ability to train/create a mapping from a large text corpus and then input a new text input that is what is sonified. Could this be real time? What would it do if a word was input that it hadn’t seen before?
+- polyphony
+
 
 ## Results
 
