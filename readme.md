@@ -1,5 +1,13 @@
 # Unsupervised Text-to-Sound Mapping
 
+Todo:
+
+- [ ] Add transition sentences between sections
+- [ ] Generate more sounds and find what's interesting
+- [ ] Add plots
+- [ ] Crossfade sounds
+
+
 # Paper
 
 ## 1. Introduction
@@ -119,21 +127,7 @@ Discuss various possibilities for future work, which should be robust and includ
 - the ability to train/create a mapping from a large text corpus and then input a new text input that is what is sonified. Could this be real time? What would it do if a word was input that it hadn’t seen before?
 - polyphony
 
-
-## Results
-
-For euclidean distance metric:
-
-As clustering improves, pairwise distance decreases, as shown by the Pearson coefficients:
-- combined_silhouette_score: 0.0931 (weak positive correlation) (bad: better clustering correlates with worse mapping)
-- combined_calinski_harabasz_score: -0.4150 (moderate negative correlation)
-- combined_davies_bouldin_score: 0.0227 (weak positive correlation) (good: lower DB score correlates with better mapping)
-
-Correlations with k=2 with wasserstein_distance:
-- combined_silhouette_score: -0.9763 (strong negative correlation) (good: better clustering correlates with better mapping)
-- combined_calinski_harabasz_score: -0.9996 (strong negative correlation)
-- combined_davies_bouldin_score: 0.8378 (strong positive correlation) (good: lower DB score correlates with better mapping)
-
+# Repository
 
 The task: Create an artistic/creative tool that can generate mappings between words and sounds. 
 I type a sentence, this sentence is represented musically, where each word becomes one sound. 
@@ -156,15 +150,6 @@ or determined by the user. Each word leads to one sound.
 
 The mapping is unsupervised, but pre-trained supervised methods can be used in the system.
 
-# Experiments
-
-## Next steps
-- [x] Sound corpus input: slice into chunks/grains and add option to remove silence
-- [ ] Evaluation: how can we evaluate the system?
-- [ ] Try with different granularities of sounds (full sounds, onsets, grains)
-- [ ] Implement other mapping methods
-- [ ] Implement other audio and text encoders
-  - I think I should use word2vec or any static encoder that is not context dependent so that the same word maps to the same place. Start simple. 
 
 ## Methodology
 
