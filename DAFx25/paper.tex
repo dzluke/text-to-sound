@@ -309,149 +309,225 @@
 \maketitle
 
 \begin{abstract}
-This research focuses on developing a framework for unsupervised text-to-sound mapping by aligning two distinct embedding spaces: one for text and one for sound. The goal is to create a system that converts textual input into corresponding sound output without relying on labeled data. This paper presents the methodology, experiments, and results of this novel approach, along with its artistic implications.
+This research focuses on developing a framework for unsupervised text-to-sound mapping by aligning two distinct embedding spaces: one for text and one for sound. The goal is to create a system that converts textual input into corresponding sound output without relying on labeled data. Designed as a creative tool for artistic exploration, this approach seeks to establish meaningful connections between words and sounds in an unsupervised manner. This paper presents the methodology, experiments, and results of this novel approach, along with its artistic implications. The system is evaluated using quantitative metrics such as pairwise distance, Wasserstein distance, and CLAP distance, as well as clustering metrics, to assess the quality of the mappings. The results demonstrate the potential of unsupervised methods for creative applications in text-to-sound mapping.
 \end{abstract}
 
 \section{Introduction}
-This research will focus on developing a framework for unsupervised text-to-sound mapping by mapping two distinct embedding spaces: one for text and one for sound. The goal is to create a system that can convert a textual input into a corresponding sound output, without relying on labeled data. The most challenging aspect of this research lies in finding the appropriate criteria for mapping the two spaces. Ultimately, the sound generated from a sentence should reflect the meaning and inherent properties of the input text, as well as the chosen sound dataset.
 
-The task: Create an artistic/creative tool that can generate mappings between words and sounds. I type a sentence, this sentence is represented musically, where each word becomes one sound. We do not seek an objective mapping in which meaning is recreated with sound. There is no semantic link between a word and its sonic mapping, but there is a semantic relationship as a whole, in the relationships between sounds. An example on the relationship between words and sounds: evaluation is not that ‘red’ maps to a certain sound that relates to the concept of ‘red’, but that the relationship between the ‘red’ sound and the ‘blue’ sound is somehow similar to the relationship between the (semantic meaning of the) words ‘red’ and ‘blue’. Since ‘red’ and ‘blue’ are both colors, they belong to the same semantic category, yet they are not similar colors. Therefore, a possible sound result could be two sounds that are from a similar category, such as: string instrument samples, long sounds, harmonic sounds, or low frequency sounds; yet have a parameter that is distinct, such as: loudness, pitch, or timbre.
+Natural language processing (NLP) techniques, such as word2Vec and RoBERTa, have demonstrated the ability to capture semantic relationships between words. Similarly, deep learning models for audio analysis have been used to extract meaningful sound representations. However, aligning these two embedding spaces within a unified framework remains an open challenge. This research explores unsupervised learning techniques to address this issue, utilizing their flexibility to bypass the need for labeled audio data, which can be scarce or vulnerable to objectivity in labeling. By doing so, this work aims to provide a novel computational tool for artistic expression and sound-based interpretation of textual input.
 
-In the context of natural language processing (NLP), word embeddings, such as word2vec, have proven to be highly effective in capturing semantic relationships between words. In a similar vein, deep learning techniques have been applied to audio data to extract meaningful representations. However, the challenge arises when trying to map these two embedding spaces—text and sound—into a common framework. Unsupervised learning techniques can offer the necessary flexibility to explore this mapping without relying on labeled data, which is often scarce in audio datasets. The objectivity of labeling musical data can be questioned, as it may result from personal biases: the same music may sound different to two different people, based on their preferences and listening history. For example, a listener entrained in Western music and sounds may label an inharmonic sound as sad or scary, which could result from cultural and historical uses of inharmonic sounds.
+In this system, the user provides a sound corpus along with a text input and the output of the system is a sound file in which each input word has been associated with one sound from the corpus. The collected sounds then play in the order of the words in the input text. The generated sound should not only reflect the connections between words but also align with the characteristics of the chosen sound dataset. Rather than establishing direct semantic correspondences between individual words and sounds, the focus is on preserving relational structures and ensuring that the relationships between words are mirrored in the relationships between their corresponding sounds. 
 
-This research will attempt to create a system that maps a given text input into a corresponding sound output by:
-\begin{itemize}
-    \item Mapping a sound corpus and a text input into distinct embedding spaces using pre-trained models
-    \item Addressing the complex task of aligning these embeddings into a meaningful text-to-sound mapping using unsupervised methods
-    \item Creating a mapping between the two embedding spaces that can convert an input text into an output audio file
-    \item Evaluating the given mapping both quantitatively and qualitatively
-\end{itemize}
+Consider an input text that contains the words ``red'' and ``blue.'' Our goal is not that the word red maps to a  sound that is somehow ``red'', but that the relationship between the ``red'' sound and the `blue'' sound reflects the relationship between the semantic meaning of the two words. As two words that belong to the same category, the resulting sounds should also come from the same category or cluster of sounds. However since the colors red and blue are complementary colors that fall on opposite sides of the color wheel, the two sounds should be distinct in some perceptual or musical feature. A theoretical relation between the sounds could be that they are samples from the same instrument but are different in pitch, exemplifying the similarity in semantic category but difference in characteristic.
+
+The choice of unsupervised methods is crucial to this work for multiple reasons. First, supervised audio and music tasks can be problematic due to the subjectivity of labeled data; what one person considers a "harsh" sound may be "pleasant" to another's ears. This subjectivity can be especially present across different cultures and musical practices and is compounded when emotionally valenced labels are used. Similarly, genre tagging for music can fall prey to the same issue as many musics fall across multiple genres or evade genre labels altogether. Finally, the use of unlabeled audio data allows a user to provide any type of sound corpus without restraint of the type or variety of sounds.
+
+In summary, our goal is to design a creative tool that:
+\begin{enumerate}
+    \item Maps a sound corpus and a text input into distinct embedding spaces using pre-trained models
+    \item Creates a mapping between the two embedding spaces
+    \item Generates an output sound that is a result of concatenating the mapped sound from each word in the text input
+\end{enumerate}
+
+Insert here: In Section N we do X. Including a short summary of results, including quantitite and qualitative. Comment on whether the quantitative and qualitative evaluations align: Do we like the sounds that result from the best mapping more than the sounds that come from the other mappings? 
+
+You can listen to a selection of generated sounds at the following website: (insert here)
 
 \section{Related Work}
-Different systems for text-to-sound mapping have been created. CLAP is an example of a multi-modal embedding space that connects sound and text in the same space.
 
-Various sound models exist. We can take advantage of existing models that feature an encoder in their architecture and use them to create embeddings of sound. Some examples of audio encoders are: MuQ, EnCodec, Wav2Vec.
+\subsection{Sound Embeddings}
+Sound embedding models convert raw audio signals into fixed-dimensional vector representations, enabling downstream analysis and processing of sound data for a variety of tasks. These models can be broadly categorized into speech-focused models, general audio models, and music-specific models. Speech models such as HuBERT specialize in learning linguistic representations from speech signals, making them effective for tasks like automatic speech recognition. General audio models like ESResNeXt capture broad sound characteristics and are widely used in audio classification and retrieval. Music-oriented models, including MuQ, EnCodec, and MERT, are designed to encode musical structures and enable applications such as music tagging, generation, and retrieval.
 
-There are many available text embedding models, including word2vec, fastText, BERT, GloVe, and T5. These models can be static or contextual.
+Speech embedding models have seen significant advancements, particularly with self-supervised learning techniques. HuBERT (Hidden-Unit BERT) learns representations directly from raw waveforms by predicting masked speech units derived from an offline clustering process. This allows it to capture both phonetic and linguistic features that improve speech recognition and spoken language processing. While highly effective in speech-related tasks, such models are not designed to capture the broader range of non-verbal audio characteristics required for general sound understanding, nor are they suited for musical tasks.
 
-Multi-modal models such as Wav2Vec2-BERT, AudioCLIP, CLAP, MERT, and MuLan, and MuQ-MuLan.
+General audio models such as ESResNeXt focus on learning embeddings from a wider variety of sounds, including environmental noise, musical tones, and human speech. ESResNeXt, a convolutional neural network-based model, is trained on large-scale datasets and ... making it well-suited for sound event classification and multimodal retrieval.
 
-Find and discuss art pieces that do something similar to this.
+More appropriate to our task, music embedding models are tailored to capture melodic, harmonic, and rhythmic structures. MuQ, which utilizes Mel Residual Vector Quantization, is designed for tasks like music tagging and instrument classification by learning compact yet expressive music representations. EnCodec, a neural audio codec, compresses and reconstructs high-fidelity audio signals using an encoder-decoder structure witb residual vector quantization, producing embeddings that preserve fine-grained musical details. MERT (Music Understanding Model with Large-Scale Self-Supervised Training) leverages large-scale self-supervised learning to capture the pitched and tonal characteristics of music, making it particularly effective for music classification and understanding. Unlike speech and general audio models, music embeddings must capture complex temporal structures and timbral variations, making them uniquely suited for applications in composition, generation, and audio synthesis.
 
-\section{Methodology}
-We use MuQ for sound embedding.
+\subsection{Text Embeddings}
+Text embedding models such as word2Vec, FastText, GloVe, BERT, and T5 have significantly improved how machines represent and process language by encoding words and sentences into high dimensional feature spaces. These models can perform a wide range of tasks including semantic similarity analysis, text classification, machine translation, and information retrieval. Static embeddings like Word2Vec and GloVe capture general word relationships based on co-occurrence patterns, while contextual models like BERT and T5 generate dynamic representations that account for the surrounding context.
 
-We use three text embeddings: two are static: word2vec, fastText and one is contextual: RoBERTa.
+Static embeddings, such as Word2Vec, GloVe, and FastText, assign a fixed vector representation to each word regardless of its context in a sentence. These models capture general semantic relationships between words based on large-scale co-occurrence patterns in text corpora. However, they cannot differentiate between words with multiple meanings (e.g., "bank" as a financial institution vs. "bank" as a riverbank), as the same embedding is used in all contexts.
 
-We use normalization techniques (StandardScaler from sklearn) and PCA.
+Contextual embeddings, such as RoBERTa and T5, generate word representations that depend on the surrounding context in which the word appears. These models leverage deep neural networks, often based on Transformer architectures, to dynamically adjust word embeddings based on sentence structure and meaning. This allows them to capture nuanced relationships and word dependencies, making them more suitable for complex language understanding tasks. RoBERTa is a transformer trained with self-supervision on unlabeled text data. It uses masking during training, meaning it learns to predict masked words in a given input sequence, and in that way learns word representations that can be used for a variety of downstream tasks.
 
-We define three mapping strategies. Each strategy starts by applying normalization and PCA with the same parameters for the sound and text spaces. The strategies are:
+\subsection{Multi-modal Embeddings}
+
+Our task is essentially text-to-sound retrieval, which is a specific instance of the task of cross-modal retrieval. Various multi-modal models that establish a shared feature space for both audio and text exist, allowing for either modality to be input to the space. 
+
+CLAP (Contrastive Language-Audio Pretraining) employs a contrastive learning framework to align audio and text representations. It uses a SWINTransformer to extract audio features from log-Mel spectrograms and a RoBERTa model for text features, projecting both into a common latent space. 
+
+AudioCLIP extends CLIP, a text-image model, by incorporating audio, aligning it with text and images in a shared embedding space. Utilizing ESResNeXt for audio encoding, AudioCLIP enables cross-modal retrieval and classification tasks, effectively bridging audio, text, and visual content.
+
+MuLan employs contrastive learning to align music and text embeddings, enabling applications like music retrieval based on textual descriptions. MuQ-MuLan builds upon this by integrating MuQ's music representations, enhancing tasks such as zero-shot music tagging and music-text retrieval. 
+
+While these models effectively align audio and text based on semantic content, their focus on objective accuracy, such as associating the word ``bird'' with the sound of birdsong, is not a requirement of of our system. Associating words with sounds based on abstract relationships or emotional tone extends beyond objective semantic alignment, presenting challenges for existing models. We seek a tool that is more flexible and open in hopes of creating more creative and artistically interesting mappings. 
+
+\subsection{Alignment Techniques}
+A standard approach to our problem is to attempt to align the text and feature spaces. This can be achieved through a variety of methods that can be reduced to the idea of a mapping matrix or function that transforms the points of one space to align with the points of another space. 
+
+In \cite{Hoshen:18}, the authors draw an analogy between this problem and the alignment of 3-D point clouds: if we can translate one point cloud to match the distribution of another, we have created an effective mapping between the point clouds. This is essentially Procrustes problem. In the domain of point cloud matching, two common methods for achieving this alignment are the Procrustes method and the Iterative Closest Point (ICP) method. In \cite{Hoshen:18}, the authors introduce Mini-Batch Cycle Iterative Closest Point (MBC-ICP) for aligning text and speech sounds in an unsupervised way. The setup for MBC-ICP is as follows:
+
+Given a sound space $S$ and text space $T$, the first step of MBC-ICP is to perform PCA to reduce the spaces to the same dimension. Consider two transformational matrices $W_S$ which maps from $S$ to $T$ and $W_T$ which maps from $T$ to $S$; each matrix is initialized to the identity, under the assumption that the spaces share a basic similarity because they both represent language.
+
+Now perform an iterative process on mini-batches of $S$ and $T$:
 \begin{enumerate}
-    \item Identity: the mapping matrix is the identity, so we simply find the closest sound embedding to the input text embedding.
-    \item Cluster: we cluster the sound and text embeddings separately. Then for each text input, we find the sound cluster whose centroid is closest to the centroid of the text cluster that the input belongs to. Then we find the sound embedding in that cluster that is closest to our text embedding.
-    \item Iterative Closest Point (ICP): defined in a different paper, provide summary here.
+    \item For each $s \in S$, find $t^*$, the nearest $W_T t$ to $s$, which is the nearest text encoding to $s$
+    \item For each $t \in T$, find $s^*$, the nearest $W_S s$ to $t$, which is the nearest sound encoding to $t$
+    \item Optimize $W_S$ and $W_T$ using mini-batch SGD by minimizing:
+\end{enumerate}
+\begin{equation}
+    \sum_{j} \| s^*_j - W_t t_j \| +
+    \sum_{i} \| t^*_i - W_s s_i \| +
+    \lambda \sum_{i} \| s_i - W_T W_S s_i \| +
+    \lambda \sum_{j} \| t_j - W_S W_T t_j \|
+\end{equation}\label{eq:icp}
+The second two terms represent cycle constraints, ensuring that transforming a text to a sound and back to a text would yield the original text. After a number of iterations, we have generated two matrices $W_S$ and $W_T$ which can map between the two spaces \cite{Chen:18}.
+
+Another alignment technique takes advantage of Generative Adversarial Networks (GANs) to train a mapping between text and sound spaces \cite{Lample:18, Chung:18}. The generator in the adversarial game is the mapping matrix $W_T$, which creates embeddings in the sound space given an embedding in the text space. The discriminator attempts to distinguish between a real sound embedding $s \in S$  and a ``fake'' sound embedding $W_T t$ that is an output of the generator: the mapping of a text embedding into the sound space. After adversarial training, $W_T$ can be used to map text to sound.
+
+\subsection{Artistic Tools}
+Are there existing artistic tools that do something similar? Or previous art works that "map" text to sounds? 
+
+\section{Methodology}\label{sec:methodology}
+The inputs to our system are a sound corpus and a text input. First, each sound in the corpus is pre-processed. during which it may be sliced into multiple chunks, leading to a total number of sounds $n$ that may be greater than the number of sound files in the corpus. Then, each of these processed sounds are embedded into the sound space, creating a matrix $S \in R^{n, p}$ where $p$ is the output dimensionality of the sound encoder. The input text of $m$ words is similarly embedded into the text feature space of dimensionality $q$, creating a matrix of text embedding  $T \in R^{m,q}$.
+
+Next, both $S$ and $T$ are normalized and dimensionality reduction is performed to reduce them to the same number of features. Our new $S$ and $T$ are of shape $(n, d)$ and $(m, d)$, respectively.
+
+A mapping strategy is employed in order to find a sound embedding that best fits a given text embedding. Since our task is the retrieval of sounds, we first map a text embedding to the sound feature space, and then find the sound embedding from our sound corpus that is the nearest neighbor of this mapped text embedding. Consider $W_T$ to be a matrix that maps a text embedding to a sound embedding. The output sound $s^*$ that maps to a text embedding $t$ is the nearest neighbor in $S$ of $W_Tt$.
+
+Three mapping strategies are defined:
+\begin{enumerate}
+    \item \textbf{Identity Mapping:} The simplest mapping in which $W_T = I$ . The mapping matrix is the identity matrix, and the nearest sound embedding to the input text embedding is selected.
+    \item \textbf{Cluster Mapping:} Text and sound embeddings are clustered separately. For each text input, the nearest sound cluster is identified, and the closest sound embedding within that cluster is selected.
+    \item \textbf{Iterative Closest Point (ICP):} This method iteratively aligns the text and sound spaces by optimizing transformation matrices to minimize distance and enforce cycle consistency. $W_T$ is learned through optimization. 
 \end{enumerate}
 
-We evaluate our system in different ways.
-
-We evaluate mappings with three distance metrics:
+The system is evaluated using three distance metrics:
 \begin{enumerate}
-    \item Pairwise distance: given a random pair of text embeddings, we compute the distance between the text embeddings. Then we compute the distance between the two sound embeddings that those texts map to. Then we calculate the difference between the distances.
-    \item Wasserstein distance: same as the pairwise distance except we compare the distributions of distances between text pairs and sound pairs by calculating the Wasserstein (Earth Mover’s) distance.
-    \item CLAP distance: we create the same pairs but the distance between pairs is calculated in CLAP feature space instead of the transformed embedding space that the text and sound embeddings are in.
+    \item \textbf{Pairwise Distance:} Measures the difference between the distances of text pairs and their corresponding sound pairs.
+    \item \textbf{Wasserstein Distance:} Compares the distributions of distances between text pairs and sound pairs.
+    \item \textbf{CLAP Distance:} Calculates distances in a shared embedding space using the CLAP model.
 \end{enumerate}
 
-The pairwise approach is used because of our motivating example presented in the Introduction: we wish for the relationship between the input words ‘red’ and ‘blue’ to be similar to the relationship between the sounds that result from these words. Therefore, the distance between the two text embeddings and the distance between the two sound embeddings should be similar.
-
-We also evaluate our clustering in the following way:
-
-After clustering each space separately, we calculate the following three clustering metrics on the combined space, meaning a single space in which all clusters for both text and sound are present:
-\begin{enumerate}
-    \item Silhouette score
-    \item Calinski-Harabasz score
-    \item Davies Bouldin score
-\end{enumerate}
+Clustering metrics, including silhouette score, Calinski-Harabasz score, and Davies-Bouldin score, are used to evaluate the quality of a clustering result by analyzing the compactness and separation of clusters. The silhouette score measures how similar a data point is to others within its cluster compared to those in neighboring clusters, with values ranging from -1 (poor clustering) to 1 (well-defined clusters). The Calinski-Harabasz score evaluates the ratio of between-cluster variance to within-cluster variance, with higher values indicating more distinct and well-separated clusters. The Davies-Bouldin score, in contrast, assesses the average similarity between each cluster and its most similar cluster, where lower values suggest better clustering as it indicates minimal overlap between groups. These metrics are particularly useful for datasets where the inherent cluster structure is unknown, providing a quantitative means to compare different clustering approaches and parameter choices.
 
 \section{Experiments and Results}
-We define one experiment to be a single run of our system with a unique set of parameters. The possible parameters of an experiment are:
-\begin{itemize}
-    \item Sound corpus
-    \item Text input
-    \item Sound embedding
-    \item Text embedding
-    \item Sound pre-processing
-    \item Normalization method
-    \item PCA dimensionality
-    \item Mapping type
-    \item Number of clusters (k) if using clustering method
-\end{itemize}
 
-We evaluate our system quantitatively with the metrics presented in Section 3: Methodology. Here we present the results:
+We consider one experiment to be a unique setting of the following parameters: sound corpus, text input, sound embedding method, text embedding method, sound pre-processing method, normalization method, number of PCA components ($d$), mapping method, distance metric for nearest neighbor search, and number of clusters, if the clustering method is used.
 
-Discuss which mappings performed best with different distance metrics.
+We experiment with a single sound embedder, MuQ, using the pre-trained \textit{MuQ-large-msd-iter} model, which embeds a given sound as a matrix of shape ($t$, 1024) where $t$ is relative to the length of the sound file. In order to adjust this embedding to return a matrix of consistent shape, we average across time to return a vector of length 1024. Therefore, our sound embeddings exist in 1,024-dimensional space. 
 
-Discuss qualitative evaluation, which is subjective.
+Three text embedders are tested: word2vec, fastText, and RoBERTa. For word2vec, we use the \textit{word2vec-google-news-300} pre-trained model, which is trained on 3 million words from the Google News dataset. For fastText we use the \textit{cc.en.300} pre-trained model, which is trained on Common Crawl and Wikipedia. Both models embed words in a 300-dimensional space.
+
+As previously mentioned, word2vec and fastText are static embedders in which the position of a word in a sentence is not considered. These models return the same embedding for an input word every time. fastText has the advantage of being able to process words from outside the dictionary it was trained on, whereas word2vec cannot. If word2vec encounters a word it has not seen during training, it will skip the word and there will not be an associated sound for that word in the final sound file.
+
+RoBERTa is a contextual model, meaning the same word can result in different embeddings based on its position and context in the input sequence. We use the \textit{roberta-base} pre-trained model hosted on HuggingFace which embeds words in a 768-dimensional space. One feature of RoBERTa is the ability to understand rare or complex words by splitting them into sub-words that it can properly parse. In order to maintain a one-to-one mapping between words and sounds, we average the embeddings for each sub-word and use this as the embedding for the word.
+
+We implement three sound pre-processing methods. For each method, there is the option to remove silence from the input sound before applying further processing. The three methods allow the input sounds to be chunked in different ways:
+\begin{enumerate}
+    \item \textbf{full}: The entire input sound is used, no chunking is performed
+    \item \textbf{onsets}: An onset detection is performed and the sounds are chunked at the beginning of a new onset
+    \item \textbf{grain}: Given a grain size $g$ in milliseconds, the input sound is chunked into equal length grains of length $g$
+\end{enumerate}
+For onset detection, we use librosa's \texttt{librosa.onset.onset\_detect} method.
+
+We use sklearn's StandardScaler as our normalization method, which subtracts the mean and divides by the standard deviation. For dimensionality reduction, sklearn's PCA with default settings is used with number of components set to 2, 5, 10, and 20. We test all three mapping methods defined in Section \ref{sec:methodology}, which we call the identity, cluster, and ICP methods. We use Euclidean distance and cosine distance as our two distance metrics, which are used to find the nearest neighbor and as the distance functions used in our mapping evaluations. For clustering, we use sklearn's implementation of KMeans and test with the number of clusters $k$ set to 2, 5, 10, 20, and 30.
+
+For the implementation of ICP, we perform a grid search to find the optimal hyper-parameters and settle on the following values: a learning rate of 0.001, batch size of 16, cycle weight $\lambda = 0.7$, with 75 iterations per batch.
+
+\subsection{Evaluation}\label{ssec:evaluation}
+As detailed in Section \ref{sec:methodology}, we use three distance metrics to evaluate each experiment: pairwise distance, Wasserstein distance, and CLAP distance. For calculating the Wasserstein distance, we use scipy's \texttt{scipy.stats.wasserstein\_distance}. For calculating the CLAP distance, we use the \textit{laion/clap-htsat-fused} pre-trained model from HuggingFace which embed sound and text in a 512-dimensional space.
+
+For experiments that use clustering, we evaluate the clustering with three metrics: silhouette score, Calinski-Harabasz score, and Davies-Bouldin score, all of which are implemented with sklearn's \texttt{metrics} library. After the sound and text spaces are clustered separately, we create a combined space that contains the clusters of both spaces, and evaluate the clustering of that combined space. We calculate the Pearson's correlation coefficient between each mapping evaluation and each clustering metric in order to discover the relationship between mapping quality and clustering quality.
+
+\subsection{Quantitative Results}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|c|c|c|}
+        \hline
+        \textbf{Mapping} & \textbf{Pairwise} & \textbf{Wasserstein} & \textbf{CLAP} \\
+        \hline
+        Identity & & & \\
+        \hline
+        Cluster & & & \\
+        \hline
+        ICP & & & \\
+        \hline
+    \end{tabular}
+    \caption{Comparison of average mapping distance for different mapping methods}
+    \label{tab:res:avg-dist}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|ccc|ccc|}
+        \hline
+        \textbf{k} & \multicolumn{3}{c|}{\textbf{Mapping Evaluations}} & \multicolumn{3}{c|}{\textbf{Clustering Metrics}} \\
+        \hline
+        & \textbf{Pairwise} & \textbf{Wasserstein} & \textbf{CLAP} & \textbf{Silhouette} & \textbf{Calinski-Harabasz} & \textbf{Davies-Bouldin} \\
+        \hline
+        2  & & & & & & \\
+        \hline
+        5  & & & & & & \\
+        \hline
+        10 & & & & & & \\
+        \hline
+        20 & & & & & & \\
+        \hline
+        30 & & & & & & \\
+        \hline
+    \end{tabular}
+    \caption{Comparison of average mapping distance and cluster metrics for different cluster sizes $k$}
+    \label{tab:res:k}
+\end{table}
+
+
+
+\subsection{Qualitative Results}
+Qualitative evaluation involved listening tests to assess the artistic interest of the generated sounds, which is a subjective measure heavily influenced by our listening preferences and histories. 
 
 \section{Discussion}
-Present the analysis of the results. Tradeoffs of different distance metrics and clustering metrics. Discuss challenges and insights.
+
+Why did each mapping perform the way it did? 
+ICP: maybe the assumptions were not valid for our spaces
+
+Do the three mapping evaluations rank the mappings in the same order? If so, this is good.
+
+Insert here: Comment on whether the quantitative and qualitative evaluations align: Do we like the sounds that result from the best mapping more than the sounds that come from the other mappings? An artistic choice: choose static or contextual text embeddings. Static embeddings lead to more repetition in the resulting sound.
 
 \section{Conclusion and Future Work}
-Summarize paper: the task, the methods, the experiments, the results, and analysis.
+This research demonstrates the potential of unsupervised methods for text-to-sound mapping, providing a framework that aligns text and sound embeddings to create artistically interesting mappings. The system's flexibility allows it to adapt to various datasets and parameter configurations, making it a valuable tool for creative applications.
 
-Reflect on the usefulness of such an artistic tool, specifically the advantages and disadvantages of using an unsupervised system.
+There are many paths for continuing and expanding this work. 
 
-Discuss various possibilities for future work, which should be robust and include:
+Other mappings and alignment techniques could be attempted. More work can be done to refine and improve the ICP mapping by improving the initialization of the mapping matrices through Optimal Transport or through further fine-tuning after optimization, such as running Procrustes method \cite{Hoshen:18}. For example, the adversarial approach described in Section ? could provide its own mapping or could be the initialization matrix for ICP.
+
+A further analysis of evaluation methods and distance metrics could be useful. We would like to explore the tradeoffs of using Euclidean vs. cosine distances in finding nearest neighbors and calculating our distance metrics. Furthermore, additional analysis in the relationship between clustering quality and mapping quality could shed more light on the effectiveness of the clustering strategy. 
+
+An extension of the system could allow for a text corpus to be input that generates the mapping in the same way, but the text that is converted to sound is input separately by the user. This input text could have words not seen in the text corpus, and the system would have to map a new text it has not seen before. This is analogous to training a network and then providing unseen data at test time.
+
+Currently, the system performs the task of text-to-sound retrieval, but a different approach could easily lead to text-to-sound generation. If the sound encoder used creates a continuous feature space in which any point in the space can be sampled to create a coherent sound, then instead of finding the nearest neighbor in the sound space to a mapped text embedding, the system could simply generate the sound that exists at the mapped embedding. This would be possible if the sound encoder is a variational auto-encoder. Unlike current text-to-sound methods which attempt an objective semantic match between input text and output sound (generating the sound of a bird if the input text is ``bird''), this system would provide a different lens on the task of text-to-sound that is focused on artistic creation.
+
+As an artistic tool, a more robust qualitative evaluation that includes input from multiple types of users, including sound artists and composers, writers and poets, and non-artists would yield a more well-rounded evaluation. The possibility of a real-time tool in which sounds can be immediately retrieved while the user types could prove interesting, even more so if the sound corpus can be added to and changed in real-time, tracking microphone input from performers or instruments. This tool is essentially a monophonic instrument, as it never creates a sound in which two samples play at the same time. A polyphonic version could take each line of text input as a separate voice to be played concurrently, sonifying each line of poetry in a stanza at the same time, for example. 
+
+
+
+Future work will explore:
 \begin{itemize}
-    \item More sound embeddings
-    \item The use of a sound VAE that allows for the generation of new sounds
-    \item The ability to train/create a mapping from a large text corpus and then input a new text input that is what is sonified. Could this be real time? What would it do if a word was input that it hadn’t seen before?
-    \item Polyphony
+    \item Leveraging supervised models like CLAP for semi-supervised alignment of text and sound spaces.
 \end{itemize}
 
 \section{Acknowledgments}
-Many thanks to the great number of anonymous reviewers!
+The authors thank the anonymous reviewers and contributors for their valuable feedback and support.
 
 %\newpage
 \nocite{*}
 \bibliographystyle{IEEEbib}
-\bibliography{DAFx25_tmpl} % requires file DAFx25_tmpl.bib
+\bibliography{paper} % requires file DAFx25_tmpl.bib
 
 \section{Appendix: Margin Check}
 This section shows the column margins for the text. \bigskip\newline
 
-Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempor incidunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquid ex ea commodi consequat. Quis aute iure reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint obcaecat cupiditat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-
-
-Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.
-
-Ut visi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
-
-Nam liber tempor cum soluta nobis eleifend option congue nihil imperdiet doming id quod mazim placerat facer possim assum. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.
-
-Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis.
-
-At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, At accusam aliquyam diam diam dolore dolores duo eirmod eos erat, et nonumy sed tempor et et invidunt justo labore Stet clita ea et gubergren, kasd magna no rebum. sanctus sea sed takimata ut vero voluptua. est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat.
-
-Consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
-
-Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempor incidunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquid ex ea commodi consequat. Quis aute iure reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint obcaecat cupiditat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-
-
-Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.
-
-Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
-
-Nam liber tempor cum soluta nobis eleifend option congue nihil imperdiet doming id quod mazim placerat facer possim assum. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.
-
-Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis.
-
-At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, At accusam aliquyam diam diam dolore dolores duo eirmod eos erat, et nonumy sed tempor et et invidunt justo labore Stet clita ea et gubergren, kasd magna no rebum. sanctus sea sed takimata ut vero voluptua. est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat.
-
-Consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. 
-
-Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempor incidunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquid ex ea commodi consequat. Quis aute iure reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint obcaecat cupiditat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-
-%%Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.
-
-%%Ut visi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla ..
 \end{document}
