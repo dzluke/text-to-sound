@@ -25,6 +25,7 @@ from util import Parameter, ParameterGenerator, load_soundfiles, remove_silence,
 
 
 SAMPLING_RATE = 44100
+CROSSFADE_DURATION = 0.01  # 10ms crossfade
 OUTPUT_PATH = Path("./output")
 CACHE_PATH = Path("./cache")
 
@@ -117,9 +118,32 @@ def find_nearest_neighbors(S, points, distance_metric):
     return S[neighbor_indices], neighbor_indices
 
 
-def save_output(sound_list, filename):
-    # concatenate audio files
-    output = np.concatenate(sound_list)
+def apply_crossfade(sound1, sound2, crossfade_samples):
+    """Crossfade between two sounds over the given number of samples."""
+    fade_out = np.linspace(1, 0, crossfade_samples)
+    fade_in = np.linspace(0, 1, crossfade_samples)
+    
+    # Apply fades
+    sound1[-crossfade_samples:] *= fade_out
+    sound2[:crossfade_samples] *= fade_in
+    
+    # Concatenate with overlap
+    return np.concatenate([sound1[:-crossfade_samples], sound1[-crossfade_samples:] + sound2[:crossfade_samples], sound2[crossfade_samples:]])
+
+
+def save_output(sound_list, filename, normalize=False):
+    if normalize:
+        sound_list = [sound / np.max(np.abs(sound)) for sound in sound_list]
+        filename = filename.parent / f"{filename.stem}_normalized{filename.suffix}"
+
+    crossfade_samples = int(CROSSFADE_DURATION * SAMPLING_RATE)
+    output = sound_list[0]
+
+    for i in range(1, len(sound_list)):
+        output = apply_crossfade(output, sound_list[i], crossfade_samples)
+    
+    if normalize:
+        output = output / np.max(np.abs(output))  # normalize
 
     OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
     counter = 1
@@ -494,7 +518,7 @@ def icp_map(
     return neighbor_indices
 
 
-def run(params, evaluator=None, cache=True, save_sound=False):
+def run(params, evaluator=None, cache=True, save_sound=False, normalize=False):
     sound_corpus_path = Path(params.sound_path)
     text_corpus_path = Path(params.text_path)
 
@@ -646,7 +670,7 @@ def run(params, evaluator=None, cache=True, save_sound=False):
     if save_sound:
         print("Saving output...")
         save_path = OUTPUT_PATH / f"{params.filename()}.wav"
-        save_output(output_sounds, save_path)
+        save_output(output_sounds, save_path, normalize=normalize)
 
     print("Done.")
 
@@ -706,11 +730,12 @@ if __name__ == "__main__":
 
     e = ParameterGenerator(
         sound_path="./corpora/sound/choir",
-        text_path="./corpora/text/neruda.txt",
+        text_path="./corpora/text/haiku.txt",
         sound_encoders=["MuQ"],
         text_encoders=["fastText"],
-        mappings=["identity", "cluster", "icp"],
-        sound_preprocessings=['onsets'],
+        # mappings=["identity", "cluster", "icp"],
+        mappings=["cluster"],
+        sound_preprocessings=[1000],
         normalizations=["standard"],
         dims=[5],
         distance_metrics=["euclidean"],
@@ -720,4 +745,4 @@ if __name__ == "__main__":
 
     parameter_list = e.create_params()
     for parameters in parameter_list:
-        scores = run(parameters, cache=True, save_sound=True)
+        scores = run(parameters, cache=True, save_sound=True, normalize=True)

@@ -531,6 +531,49 @@ def analyze_experiments(results_file="./evaluation_results/evaluation_results.cs
     # Check if we have clustering metrics in the results
     has_clustering_metrics = any(metric in df.columns for metric in clustering_metrics)
     
+    if has_clustering_metrics and "cluster" in df["mapping_method"].unique():
+        print("\nCLUSTERING METRICS ANALYSIS")
+        print("-" * 50)
+        
+        cluster_df = df[df["mapping_method"] == "cluster"]
+        
+        if compare_param and compare_param in cluster_df.columns:
+            print(f"\nCLUSTERING METRICS BY '{compare_param}'")
+            print("-" * 50)
+            
+            for value in sorted(cluster_df[compare_param].dropna().unique()):
+                subset = cluster_df[cluster_df[compare_param] == value]
+                print(f"{compare_param} = {value}:")
+                
+                for metric in clustering_metrics:
+                    if metric in subset.columns:
+                        avg_metric = subset[metric].mean()
+                        print(f"  Avg {metric}: {avg_metric:.4f} (n={len(subset)})")
+                print()
+        else:
+            print(f"No valid '{compare_param}' found in clustering metrics analysis.")
+    
+    # Print best overall results for each metric
+    # for metric in metrics:
+    #     print(f"\nBest {metric} results:")
+    #     best_idx = df[metric].idxmin()  # Lower is better for both pairwise and Wasserstein
+    #     if pd.notna(best_idx):
+    #         best_row = df.loc[best_idx]
+    #         print(f"  Best {metric}: {best_row[metric]:.4f}")
+    #         for param in ['sound_corpus', 'text_corpus', 'sound_encoder', 'text_encoder', 
+    #                     'mapping_method', 'dim', 'k']:
+    #             if param in best_row and pd.notna(best_row[param]):
+    #                 print(f"    {param}: {best_row[param]}")
+
+    # Analyze clustering metrics if present
+    clustering_metrics = [
+        "combined_silhouette_score", "combined_calinski_harabasz_score",
+        "combined_davies_bouldin_score"
+    ]
+    
+    # Check if we have clustering metrics in the results
+    has_clustering_metrics = any(metric in df.columns for metric in clustering_metrics)
+    
     if has_clustering_metrics:
         print("\nPEARSON'S CORRELATION ANALYSIS")
         print("-" * 50)
@@ -689,6 +732,46 @@ def generate_plots(results_file="./evaluation_results/evaluation_results.csv",
                 plt.savefig(plot_file)
                 plt.close()
                 print(f"Saved plot: {plot_file}")
+
+    # Generate a plot showing the average of all three evaluation metrics for each k value (excluding k=50)
+    if "k" in df.columns and "mapping_method" in df.columns:
+        cluster_df = df[(df["mapping_method"] == "cluster") & (df["k"] != 50)]
+
+        # Ensure the required metrics are present
+        metrics = ["pairwise_distance", "wasserstein_distance", "CLAP_distance"]
+        available_metrics = [metric for metric in metrics if metric in cluster_df.columns]
+
+        if available_metrics:
+            # Calculate the average of each metric for each k
+            avg_metrics = cluster_df.groupby("k")[available_metrics].mean().reset_index()
+
+            # Separate CLAP distance for secondary y-axis
+            clap_avg = avg_metrics[["k", "CLAP_distance"]]
+            other_metrics = avg_metrics.drop(columns=["CLAP_distance"]).melt(id_vars="k", var_name="Metric", value_name="Average")
+
+            # Generate the plot
+            fig, ax1 = plt.subplots(figsize=(10, 6))
+
+            # Plot pairwise and Wasserstein distances on the primary y-axis
+            sns.lineplot(data=other_metrics, x="k", y="Average", hue="Metric", marker="o", ax=ax1)
+            ax1.set_title("Effect of k on Evaluation Metrics (Excluding k=50)")
+            ax1.set_xlabel("k (Number of Clusters)")
+            ax1.set_ylabel("Average Metric Value (Pairwise/Wasserstein)")
+            ax1.legend(title="Metric", loc="upper left")
+
+            # Plot CLAP distance on the secondary y-axis
+            ax2 = ax1.twinx()
+            sns.lineplot(data=clap_avg, x="k", y="CLAP_distance", color="red", marker="o", ax=ax2)
+            ax2.set_ylabel("Average CLAP Distance", color="red")
+            ax2.tick_params(axis="y", labelcolor="red")
+
+            plt.tight_layout()
+
+            # Save the plot
+            plot_file = output_dir / "k_effect_on_all_metrics_with_clap_secondary_axis.png"
+            plt.savefig(plot_file)
+            plt.close()
+            print(f"Saved plot: {plot_file}")
     
     print("\nPlot generation complete!")
     return df  # Return the filtered dataframe for further analysis if needed
