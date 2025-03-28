@@ -1,14 +1,6 @@
 # Unsupervised Text-to-Sound Mapping
 
-Todo:
-
-- [ ] Add transition sentences between sections
-- [ ] Generate more sounds and find what's interesting
-- [ ] Add plots
-- [ ] Crossfade sounds
-
-
-# Paper
+# Paper Outline
 
 ## 1. Introduction
 
@@ -127,7 +119,7 @@ Discuss various possibilities for future work, which should be robust and includ
 - the ability to train/create a mapping from a large text corpus and then input a new text input that is what is sonified. Could this be real time? What would it do if a word was input that it hadn’t seen before?
 - polyphony
 
-# Repository
+# Repository Notes
 
 The task: Create an artistic/creative tool that can generate mappings between words and sounds. 
 I type a sentence, this sentence is represented musically, where each word becomes one sound. 
@@ -417,3 +409,180 @@ cd fastText
 wget https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.en.300.bin.gz
 gunzip cc.en.300.bin.gz
 ```
+
+# Earlier Notes
+## 1. Adversarial (GAN) Approach
+
+### [Unsupervised Cross-Modal Alignment of Speech and Text Embedding Spaces](https://people.csail.mit.edu/andyyuan/docs/nips-18.unsupervised.paper.pdf)
+
+They want to map a sound embedding space $S$ to a text embedding space $T$. They do that by learning a projection $W$
+that maps an embedding $s \in S$ into a embedding $Ws \in T$. They learn $W$ by training a GAN: the generator is $W$,
+and it tries to fool the discriminator into thinking that any $Ws$ is actually a $t \in T$. The discriminator tries to 
+discriminate between random elements $Ws$ and a real $t \in T$. 
+
+*Question: But if $s_i$ is mapped to $t_i$, how do they know that the sound $s$ is represented by the sound $t$? Isn't it
+just a randomly selected sound that has no relation to $t$?*
+
+Answer from perplexity: initially, the mapping is indeed arbitrary, but the adversarial objective gradually aligns the distributions of the two embedding spaces. The refinement procedure that creates a "synthetic dictionary" is what establishes meaningful correspondences between specific elements.
+
+They do a further refinement procedure to create a "synthetic dictionary" that specifies which $s_i$ maps to which $t_i$.
+It seems that each sound should map only to one text. In our problem, one text can map to multiple sounds, it doesn't
+have to be a one-to-one mapping. 
+
+**Their text and sound dimensions are the same** but I don't think they have to be, they propose their problem with 
+$S$ and $T$ having distinct dimensions.
+
+This could work for our problem. The setup: $S$ is a sound embedding space from a pre-trained VAE. $T$ is a text-embedding
+space from a pre-trained system like word2vec, BERT, or GloVe. $W$ projects the text feature space into the sound feature
+space $S$. We learn $W$ by training a discriminator to learn the difference between real $s \in S$ and fake $Wt$. I'm
+not sure if further refinement is necessary. Then, for an input $t$, we can either choose the sound $s$ that is closest
+to $Wt$ or we can generate a new sound $Wt$, since the sound embedding space $S$ is continuous. 
+
+Could the initilized/proxy $W$ be a result of CLAP embeddings? 
+
+
+
+This paper takes its methodology from:
+
+### [Word Translation Without Parallel Data](https://arxiv.org/pdf/1710.04087)
+
+*Procrustes problem*: apparently this is the [Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
+which has a solution if the correspondences are known.
+
+Procrustes, which is a standard approach to align points when correspondences are known
+
+They do a Cross Domain Similarity Local Scaling to get around the hub problem: certain points in high dimensional space
+are the nearest neighbor of many points, and some are the nearest neighbor of no points.
+
+They make their $W$ orthogonal.
+
+## 2. Iterative Closest Point Approach
+
+### [Towards Unsupervised Automatic Speech Recognition Trained by Unaligned Speech and Text only](https://arxiv.org/pdf/1803.10952)
+This approach uses **Mini-Batch Cycle Iterative Closest Point (MBC-ICP)** which is defined in [Non-Adversarial Unsupervised Word Translation](https://arxiv.org/pdf/1801.06126): 
+given two spaces $S$ and $T$, use PCA to reduce the dimensionality. Now the spaces have the same dimensionality.
+Given two transformational matrices $W_S$ which maps from $S$ to $T$ and $W_T$ which maps from $T$ to $S$.
+
+Now perform an iterative process:
+1. For each $s \in S$, find $t^*$, the nearest $W_T t$ to $s$, which is the best text encoding for $s$
+2. For each $t \in T$, find $s^*$, the nearest $W_S s$ to $t$, which is the best sound encoding for $t$
+3. Optimize $W_S$ and $W_T$ by minimizing: distance $W_S s$ and $t^*$ + distance $W_T t$ and $s^*$ + cycle constraints (ex: minimize distance between $s$ and $W_S W_T s$)
+
+We could also use CLAP in a (semi-)supervised way, where you replace $t*$ with $CLAP(t)$ or you find $t*$ by finding the nearest neighbor in the CLAP encoding ($t*=$ nearest $CLAP(t)$ to $s$). 
+But then we would really just be using CLAP to align our spaces, so what's the reason we don't just use CLAP for the entire thing?
+
+We could try using cosine similarity instead of Euclidean distance and compare the difference. 
+
+### Initialization
+**Assumption they make: intitializing the matrices to the identity is valid because the two spaces share some similarity since they both represent language data,
+and PCA can align these spaces to some degree.**
+
+This may or may not be true with our feature spaces. 
+
+The original paper assumes that:
+1. **Text and speech have a strong structural similarity**  
+   - Both text embeddings (Word2Vec, BERT) and phonetic embeddings (Audio Word2Vec, Wav2Vec) are trained to reflect **semantic similarity**.
+   - Words that appear in **similar contexts** tend to have similar embeddings.
+   - Speech audio shares these patterns because the **same words are spoken in similar phonetic environments**.
+
+2. **PCA captures shared structure across modalities**  
+   - Since **word and speech distributions are already somewhat aligned**, reducing both to their **principal components** helps remove irrelevant dimensions.
+   - PCA ensures that the most **important variance directions** remain, making alignment easier.
+
+✅ **Result:** PCA works well as a starting point because **language-based text and speech embeddings already share structural patterns**.
+
+**Does This Apply to Music and Text?**
+
+Music and text have **very different structures**, so PCA may not be as effective in aligning their spaces. Let's break it down:
+
+| Feature | Speech & Text | Music & Text |
+|---------|--------------|-------------|
+| **Semantic Alignment** | Words and phonemes share similar meanings across speech and text. | Music and text do not share a direct **semantic** mapping. |
+| **Time Dependence** | Phonemes and words occur in structured sequences. | Music has **longer, non-discrete structures** (e.g., melodies, harmonies). |
+| **Feature Representation** | Phonetic embeddings capture linguistic properties (similar to text embeddings). | Music embeddings capture **pitch, rhythm, timbre**, which do not have a natural textual equivalent. |
+
+**Does PCA Still Work?**
+
+❌ **Potential Problems**  
+- **Music-text embeddings may not align in the same way speech-text embeddings do**.  
+- **Dimensionality reduction via PCA assumes structural similarity**, but music and text embeddings may encode **completely different types of relationships**.  
+- The **top PCA components of music embeddings** might capture **harmonic or rhythmic variance**, while **top PCA components of text embeddings** capture **semantic or syntactic variance**—these may not be easily aligned.  
+
+✅ **When PCA Might Still Work**  
+- If the **music embeddings** were trained in a way that **preserves text-like structure** (e.g., mapping music to lyrics or descriptions), PCA might still help.  
+- If the **music embeddings are contrastively trained** (like CLAP), PCA could still capture a **shared structure** across the two modalities.
+
+##### Other options for initialization
+
+1. Use Optimal Transport (OT) instead of PCA to get an initial alignment. Unlike PCA, OT does not assume the spaces are already structurally similar. It finds the best possible alignment between two distributions even if they are not naturally aligned.
+2. Use Adversarial method to get an initialized $W_T$ that is then further refined by ICP
+3. Use CLAP to get initial relationships (Would CLAP be considered a teacher model here?)
+4. Use domain knowledge: compute standard audio descriptors (brightness, loudness, noisiness) and use that for initial alignment
+
+### [Unsupervised Alignment of Embeddings with Wasserstein Procrustes](https://arxiv.org/pdf/1805.11222)
+
+Maybe it could work, but it was complicated and I didn't follow. Problem is it seems their two embeddings are the same
+dimensionality. Also, their results are barely better than adversarial (but perhaps simpler to implement than training
+a GAN?)
+
+
+## 3. Hybrid Approach
+(from perplexity)
+
+### Stage 1: CLAP-Initialized Mapping
+Start with an initial mapping matrix W that projects from your text embedding space to your audio embedding space. This initialization can leverage CLAP's pre-trained cross-modal understanding:
+
+For a sample of text embeddings from your text encoder, compute the corresponding CLAP text embeddings
+
+For a sample of audio embeddings from your VAE, compute the corresponding CLAP audio embeddings
+
+Learn an initial transformation $W_0$ that maps from your text encoder space to your audio VAE space by aligning through the CLAP embeddings as an intermediate representation
+
+### Stage 2: Adversarial Distribution Alignment
+Use adversarial training to refine the mapping W:
+
+$L_{adv} = E[log D(z_{audio})] + E[log(1 - D(G(z_{text})))]$
+
+Where D is a discriminator that tries to distinguish between real audio embeddings and mapped text embeddings, and G is the mapping function W. This aligns the overall distributions of the two spaces.
+
+### Stage 3: Prototypical Clustering with Iterative Refinement
+Leverage the VAE clusters (as mentioned in your assumptions) to perform an iterative refinement:
+
+1. For each audio VAE cluster, identify a corresponding region in the text embedding space using the current mapping W
+2. Use these cluster-level correspondences as "anchors" for refining the mapping
+3. Apply the ICP algorithm to iteratively improve the mapping by minimizing:
+- The distance between mapped text embeddings and their nearest audio cluster centroids
+- The cycle consistency loss to ensure semantic coherence
+
+This stage provides fine-grained alignment that respects the cluster structure of your audio VAE
+
+## Other notes
+
+Contrastive learning can be used for unsupervised learning by doing data augmentation.
+One common approach is to generate different "views" of the same input and treat them as positive pairs while treating unrelated samples as negative pairs.
+For audio: Apply time-stretching, pitch shifting, or noise augmentation to an audio clip to create slightly different versions.
+A recent trend is to learn representations by contrasting different versions or views of the same data example, computed via data augmentation
+
+hubness problem (points tending to be nearest neighbors of many points in high-dimensional spaces)
+
+If we use a VAE, we can generate sounds by sampling the from the latent space
+
+Deep Clustering Alignment: take in clusters from different feature spaces and align them. This could be achieved through
+contrastive loss. I would train a network to align the clusters.
+
+Triplet Loss: Given (sound, positive text, negative text) tuples, encourage the model to position the correct mapping 
+closer than incorrect ones. Use standard audio descriptors: this could be (sound, loud, soft) based on amplitude, etc.
+Or (sound, dense, sparce), (sound, harmonic, inharmonic) etc.
+
+Optimal transport may be a way of aligning the clusters without additional training. I could use PCA or CCA to reduce
+dimensionality to the same size, and then apply optimal transport or Hungarian matching to align the clusters. 
+
+If we can align the spaces, we can use Nearest Neighbor Matching to connect text and audio. Possible methods to align:
+1. Unsupervised Canonical Correlation Analysis (UCCA)
+2. Training a network with contrastive learning
+3. Optimal Transport alignment (Wasserstian distance)
+
+### Related keywords
+- Cross-Modality Contrastive Learning
+- Cross-Modal Retrieval
+- Transfer Learning
